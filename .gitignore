@@ -1,0 +1,12 @@
+# Python
+.env
+*.pyc
+__pycache__/
+*.log
+
+# Системные
+.DS_Store
+Thumbs.db
+
+# Данные бота
+global_stats.json
