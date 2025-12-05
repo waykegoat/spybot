@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import telebot
 from telebot import types
 import random
@@ -47,6 +49,99 @@ print("=" * 50)
 
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
+# ============ ПРОВЕРКА ПОДПИСКИ ============
+# Получаем настройки канала из .env
+CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@dimbub')
+CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/dimbub')
+CHANNEL_ID = os.getenv('CHANNEL_ID', '-1003369490880')
+
+# Преобразуем CHANNEL_ID в число если нужно
+try:
+    CHANNEL_ID = int(CHANNEL_ID)
+except ValueError:
+    pass
+
+def check_subscription(user_id):
+    """Проверяет, подписан ли пользователь на канал"""
+    print(f"🔍 Проверяем подписку для {user_id}")
+    
+    # ДЛЯ ТЕСТА - закомментируйте return True когда будете готовы
+    # return True  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОЧКУ ДЛЯ ТЕСТА!
+    
+    try:
+        # Убедитесь, что CHANNEL_ID правильный
+        print(f"Канал ID: {CHANNEL_ID}, тип: {type(CHANNEL_ID)}")
+        
+        member = bot.get_chat_member(CHANNEL_ID, user_id)
+        status = member.status
+        print(f"Статус пользователя {user_id}: {status}")
+        
+        is_subscribed = status in ['creator', 'administrator', 'member']
+        print(f"Результат проверки: {is_subscribed}")
+        
+        return is_subscribed
+        
+    except Exception as e:
+        print(f"❌ Ошибка проверки подписки: {type(e).__name__}: {e}")
+        return False
+
+def require_subscription(func):
+    """Декоратор для проверки подписки - РАБОЧАЯ ВЕРСИЯ"""
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        user_name = message.from_user.first_name
+        
+        print(f"\n{'='*50}")
+        print(f"🔍 ДЕКОРАТОР: Проверяем {user_id} ({user_name})")
+        print(f"Команда: {message.text}")
+        
+        # Проверяем подписку
+        if not check_subscription(user_id):
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(
+                types.InlineKeyboardButton("📢 Подписаться на канал", url=CHANNEL_URL),
+                types.InlineKeyboardButton("✅ Я подписался", callback_data="check_subscription")
+            )
+            
+            bot.send_message(
+                message.chat.id,
+                f"<b>📢 Для использования бота нужно подписаться на наш канал!</b>\n\n"
+                f"Канал: {CHANNEL_USERNAME}\n"
+                f"После подписки нажмите '✅ Я подписался'",
+                reply_markup=keyboard
+            )
+            print(f"❌ Пользователь {user_id} не подписан, блокируем")
+            print(f"{'='*50}\n")
+            return  # НЕ вызываем функцию
+        
+        print(f"✅ Пользователь {user_id} подписан, выполняем команду")
+        print(f"{'='*50}\n")
+        return func(message, *args, **kwargs)  # Вызываем если есть подписка
+    
+    return wrapper
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_subscription")
+def handle_check_subscription(call):
+    """Обработчик кнопки "Я подписался" """
+    user_id = call.from_user.id
+    
+    if check_subscription(user_id):
+        bot.answer_callback_query(call.id, "✅ Спасибо за подписку!")
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Показываем основное меню
+        bot.send_message(
+            call.message.chat.id,
+            "🎮 <b>Добро пожаловать!</b> Теперь вы можете использовать бота.",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        bot.answer_callback_query(
+            call.id,
+            "❌ Вы ещё не подписались!",
+            show_alert=True
+        )
+
 # Структуры данных
 global_stats = {
     'total_games': 0,
@@ -68,72 +163,21 @@ pending_chat_messages = {}  # user_id -> (код_лобби, сообщение)
 
 # Списки слов по темам
 THEMES = {
-    'dota2': [
-        "Pudge", "Invoker", "Juggernaut", "Lina", "Crystal Maiden", "Anti-Mage", "Axe", "Zeus", "Slark",
-        "Phantom Assassin", "Terrorblade", "Sven", "Tiny", "Mirana", "Windranger", "Riki", "Bounty Hunter",
-        "Ursa", "Shadow Fiend", "Templar Assassin", "Ember Spirit", "Storm Spirit", "Earth Spirit",
-        "Io", "Chen", "Enchantress", "Meepo", "Arc Warden", "Techies", "Rubick", "Dark Willow",
-        "Monkey King", "Mars", "Void Spirit", "Dawnbreaker", "Marci", "Primal Beast", "Muerta",
-        
+    'dota2': ["Pudge", "Invoker", "Juggernaut", "Lina"],
+    
+    'clashroyale': [
+        "Knight", "Archers", "Witch", "Prince", "Golem", "P.E.K.K.A", "Giant", 
+        "Lava Hound", "Miner", "Balloon", "Wizard", "Musketeer"
     ],
-    'clash_royale': [
-        "Рыцарь", "Лучники", "Ведьма", "Принц", "Голем", "Пекка", "Гигант", "Лава-щенок", "Минер",
-        "Баллон", "Волшебник", "Стрелок", "Мега-рыцарь", "Электро-дракон", "Ледяной дух", "Огненный дух",
-        "Хог Райдер", "Королева лучников", "Король-скелет", "Принцесса", "Ледяной голем", "Лава-гончая",
-        "Бэби-дракон", "Валькирия", "Охотник за головами", "Тёмный принц", "Банда скелетов",
-        
+    
+    'brawlstars': [
+        "Shelly", "Colt", "Bull", "Brock", "El Primo", "Rosa", "Leon", "Spike", 
+        "Crow", "Jessie", "Nita", "Dynamike", "Tick", "8-Bit"
     ],
-    'brawl_stars': [
-        "Шэлли", "Кольт", "Булл", "Брок", "Эль Примо", "Роза", "Леон", "Спайк", "Кроу",
-        "Джесси", "Нита", "Динамик", "Тик", "8-Бит", "Эмз", "Стью", "Поко", "Фрэнк",
-        "Пенни", "Дэррил", "Карл", "Джекки", "Гейл", "Нанни", "Эдгар", "Байрон", "Гром",
-        "Грифф", "Белл", "Эш", "Мэг", "Лола", "Фэнг", "Ева", "Джанет", "Отис", "Сэм",
-        "Гас", "Бонни", "Честер", "Грей", "Мэнди", "Р-T", "Уиллоу", "Дуг", "Чак", "Мэйси",
-        "Перл", "Мэйси", "Ларри и Лори", "Хэнк", "Чарли", "Корделиус", "Эмбер", "Лу",
-       
-    ],
+    
     'locations': [
-        "Больница", "Стрип-клуб", "Школа", "Тюрьма", "Космическая станция", "Ресторан",
-        "Банк", "Супермаркет", "Аэропорт", "Отель", "Кинотеатр", "Театр", "Музей",
-        "Библиотека", "Спортзал", "Бассейн", "Пляж", "Горнолыжный курорт", "Зоопарк",
-        "Парк развлечений", "Церковь", "Торговый центр", "Стадион", "Подводная лодка",
-        "Пустыня", "Джунгли", "Горы", "Пещера", "Замок", "Деревня", "Город", "Ферма",
-        "Лаборатория", "Фабрика", "Строительная площадка", "Кладбище", "Остров",
-        "Вокзал", "Метро", "Автобус", "Самолет", "Корабль", "Поезд", "Такси",
-        "Кафе", "Бар", "Ночной клуб", "Спа-салон", "Парикмахерская", "Сауна",
-        "Боулинг", "Бильярдная", "Казино", "Игровой зал", "Галерея", "Выставка",
-        "Концертный зал", "Опера", "Цирк", "Планетарий", "Обсерватория", "Ботанический сад",
-        "Аквапарк", "Луна-парк", "Парк", "Сквер", "Набережная", "Мост", "Тоннель",
-        "Лифт", "Эскалатор", "Подземелье", "Чердак", "Подвал", "Гараж", "Сауна",
-        "Сауна", "Баня", "Химчистка", "Прачечная", "Пекарня", "Кондитерская",
-        "Мясной магазин", "Рынок", "Ярмарка", "Фестиваль", "Карнавал", "Парад",
-        "Демонстрация", "Митинг", "Конференция", "Семинар", "Лекция", "Урок",
-        "Экзамен", "Собеседование", "Свидание", "Встреча", "Вечеринка", "Праздник",
-        "День рождения", "Свадьба", "Юбилей", "Корпоратив", "Выпускной", "Посвящение",
-        "Инициация", "Обряд", "Церемония", "Награждение", "Конкурс", "Соревнование",
-        "Турнир", "Чемпионат", "Олимпиада", "Марафон", "Забег", "Пробег", "Заплыв",
-        "Полет", "Путешествие", "Экспедиция", "Поход", "Прогулка", "Поездка", "Воядж",
-        "Круиз", "Тур", "Экскурсия", "Прогулка", "Променад", "Маршрут", "Трасса",
-        "Дорога", "Путь", "Тропа", "Тропинка", "Аллея", "Бульвар", "Проспект",
-        "Улица", "Переулок", "Площадь", "Сквер", "Парк", "Сад", "Огород", "Поле",
-        "Луг", "Лес", "Роща", "Бор", "Дубрава", "Березняк", "Сосняк", "Ельник",
-        "Кедрач", "Лиственничник", "Осинник", "Ольшаник", "Ивняк", "Тополевник",
-        "Ясенник", "Кленовник", "Букняк", "Дубняк", "Грабняк", "Орешник", "Чернолесье",
-        "Белолесье", "Краснолесье", "Желтолесье", "Зеленолесье", "Голубесье", "Синелесье",
-        "Фиолетолесье", "Оранжелесье", "Розоволесье", "Бирюзолесье", "Серебрянолесье",
-        "Золотолесье", "Бронзолесье", "Меднолесье", "Стальноесье", "Чугунолесье",
-        "Алюминиесье", "Титаноесье", "Вольфрамоесье", "Молибденолесье", "Хромесье",
-        "Никелесье", "Кобальтоесье", "Марганцевоесье", "Железноесье", "Свинцевоесье",
-        "Оловоесье", "Цинковоесье", "Медьесье", "Ртутноесье", "Серебряноесье",
-        "Золотоесье", "Платиновоесье", "Палладиевоесье", "Родиевоесье", "Иридиевоесье",
-        "Осмиевоесье", "Рутениевоесье", "Технециевоесье", "Рениевоесье", "Бориевоесье",
-        "Актиниевоесье", "Ториевоесье", "Протактиниевоесье", "Урановоесье", "Нептуниевоесье",
-        "Плутониевоесье", "Америциевоесье", "Кюриевоесье", "Беркниевоесье", "Калифорниевоесье",
-        "Эйнштейниевоесье", "Фермиевоесье", "Менделеевоесье", "Нобелиевоесье", "Лоуренсиевоесье",
-        "Резерфордиевоесье", "Дубниевоесье", "Сиборгиевоесье", "Бориевоесье", "Хассиевоесье",
-        "Мейтнериевоесье", "Дармштадтиевоесье", "Рентгениевоесье", "Копернициевоесье",
-        "Нихониевоесье", "Флеровиевоесье", "Московиевоесье", "Ливермориевоесье",
-        "Теннессиневоесье", "Оганесоневоесье"
+        "Hospital", "Restaurant", "School", "Prison", "Space Station", "Bank",
+        "Supermarket", "Airport", "Hotel", "Cinema", "Theater", "Museum"
     ]
 }
 
@@ -152,18 +196,33 @@ def generate_lobby_code():
 def get_theme_name(theme_code):
     theme_names = {
         'dota2': '🎮 Dota 2 Герои',
-        'clash_royale': '👑 Clash Royale',
-        'brawl_stars': '⭐ Brawl Stars',
+        'clashroyale': '👑 Clash Royale',
+        'brawlstars': '⭐ Brawl Stars',
         'locations': '📍 Локации',
         'custom': '✏️ Своя тема'
     }
     return theme_names.get(theme_code, 'Неизвестная тема')
 
 def get_random_word(theme, custom_word=None):
+    print(f"🔍 Выбираем слово для темы: {theme}")
+    
     if theme == 'custom' and custom_word:
+        print(f"✅ Возвращаем своё слово: {custom_word}")
         return custom_word
-    elif theme in THEMES:
-        return random.choice(THEMES[theme])
+    
+    if theme in THEMES:
+        words = THEMES[theme]
+        print(f"✅ Тема найдена, слов доступно: {len(words)}")
+        
+        if words:  # Проверяем, что список не пустой
+            word = random.choice(words)
+            print(f"✅ Выбрано слово: {word}")
+            return word
+        else:
+            print(f"❌ Список слов для темы {theme} пуст!")
+            return "Неизвестное слово"
+    
+    print(f"❌ Тема {theme} не найдена!")
     return "Неизвестное слово"
 
 def save_global_stats():
@@ -283,20 +342,47 @@ def create_lobby_menu(lobby_code):
 
 def create_theme_keyboard(lobby_code):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"theme_dota2_{lobby_code}"),
-        types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"theme_clash_royale_{lobby_code}")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"theme_brawl_stars_{lobby_code}"),
-        types.InlineKeyboardButton("📍 Локации", callback_data=f"theme_locations_{lobby_code}")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"theme_custom_{lobby_code}")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
-    )
+    
+    print(f"🔍 Создаю клавиатуру тем для лобби {lobby_code}")
+    
+    try:
+        # Dota 2
+        keyboard.add(
+            types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"theme_dota2_{lobby_code}")
+        )
+        print("✅ Добавлена кнопка Dota 2")
+        
+        # Clash Royale
+        keyboard.add(
+            types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"theme_clashroyale_{lobby_code}")
+        )
+        print("✅ Добавлена кнопка Clash Royale")
+        
+        # Brawl Stars  
+        keyboard.add(
+            types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"theme_brawlstars_{lobby_code}")
+        )
+        print("✅ Добавлена кнопка Brawl Stars")
+        
+        # Локации
+        keyboard.add(
+            types.InlineKeyboardButton("📍 Локации", callback_data=f"theme_locations_{lobby_code}")
+        )
+        print("✅ Добавлена кнопка Локации")
+        
+        # Своя тема
+        keyboard.add(
+            types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"theme_custom_{lobby_code}")
+        )
+        
+        # Назад
+        keyboard.add(
+            types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
+        )
+        
+    except Exception as e:
+        print(f"❌ Ошибка создания клавиатуры: {e}")
+    
     return keyboard
 
 def create_voting_keyboard(lobby_code, user_id):
@@ -353,6 +439,7 @@ def create_admin_keyboard():
 
 # Обработчики команд
 @bot.message_handler(commands=['start', 'help'])
+@require_subscription
 def handle_start(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
@@ -381,6 +468,7 @@ def handle_start(message):
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
 
 @bot.message_handler(commands=['new'])
+@require_subscription
 def handle_new(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
@@ -452,6 +540,7 @@ def handle_new(message):
     save_global_stats()
 
 @bot.message_handler(commands=['join'])
+@require_subscription
 def handle_join(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
@@ -608,6 +697,7 @@ def handle_leave(message):
     save_global_stats()
 
 @bot.message_handler(commands=['menu'])
+@require_subscription
 def handle_menu(message):
     user_id = message.from_user.id
     
@@ -1055,44 +1145,78 @@ def handle_callback(call):
                                      f"✅ Авто-закрытие {'включено' if lobby['auto_close'] else 'выключено'}!")
     
     # Обработка выбора темы
+        # Обработка выбора темы
     elif data.startswith('theme_'):
+        print(f"\n{'='*50}")
+        print(f"🔍 CALLBACK ТЕМЫ: {data}")
+        
         parts = data.split('_')
+        print(f"🔍 Части: {parts}")
+        
         if len(parts) >= 3:
             theme = parts[1]
             lobby_code = '_'.join(parts[2:])
             
+            print(f"🔍 Тема: {theme}, Лобби: {lobby_code}")
+            print(f"🔍 Доступные темы: {list(THEMES.keys())}")
+            
+            # ВАЖНО: Проверяем существует ли тема
+            if theme not in THEMES and theme != 'custom':
+                print(f"❌ ОШИБКА: Тема '{theme}' не найдена!")
+                bot.answer_callback_query(call.id, "❌ Ошибка темы!")
+                return
+            
             if lobby_code in lobbies:
                 lobby = lobbies[lobby_code]
+                print(f"✅ Лобби найдено, ID: {lobby_code}")
                 
                 # Проверяем, является ли пользователь ведущим
                 is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
                 if not is_host:
+                    print(f"❌ Пользователь {user_id} не ведущий")
                     bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять тему!")
                     return
                 
+                print(f"✅ Пользователь {user_id} - ведущий")
+                
                 # Устанавливаем тему
                 lobby['theme'] = theme
+                print(f"✅ Установлена тема: {theme}")
                 
                 # Если выбрана своя тема, запрашиваем слово
                 if theme == 'custom':
-                    bot.send_message(call.message.chat.id, 
-                                   "✏️ Введите слово для игры (одно слово или короткое словосочетание):")
+                    print(f"🔍 Выбрана своя тема, запрашиваем слово")
+                    msg = bot.send_message(call.message.chat.id, 
+                                         "✏️ Введите слово для игры:")
                     
                     def process_custom_word(message):
-                        lobby['custom_word'] = message.text.strip()
-                        bot.send_message(message.chat.id, 
-                                       f"✅ Слово установлено: <code>{lobby['custom_word']}</code>")
-                        bot.send_message(message.chat.id, 
-                                       "🎮 Меню лобби:", 
-                                       reply_markup=create_lobby_menu(lobby_code))
+                        if message.text:
+                            lobby['custom_word'] = message.text.strip()
+                            print(f"✅ Установлено своё слово: {lobby['custom_word']}")
+                            bot.send_message(message.chat.id, 
+                                           f"✅ Слово установлено: <code>{lobby['custom_word']}</code>")
+                            bot.send_message(message.chat.id, 
+                                           "🎮 Меню лобби:", 
+                                           reply_markup=create_lobby_menu(lobby_code))
                     
-                    bot.register_next_step_handler(call.message, process_custom_word)
+                    bot.register_next_step_handler(msg, process_custom_word)
+                    bot.answer_callback_query(call.id, "✏️ Введите слово")
+                    
                 else:
-                    bot.answer_callback_query(call.id, f"✅ Тема установлена: {get_theme_name(theme)}")
-                    bot.edit_message_text(f"✅ Тема установлена: {get_theme_name(theme)}\n\n🎮 Меню лобби:", 
-                                        call.message.chat.id, 
-                                        call.message.message_id,
-                                        reply_markup=create_lobby_menu(lobby_code))
+                    # Для обычных тем
+                    theme_name = get_theme_name(theme)
+                    print(f"✅ Устанавливаем тему: {theme_name}")
+                    
+                    bot.answer_callback_query(call.id, f"✅ Тема: {theme_name}")
+                    bot.edit_message_text(
+                        f"✅ Тема установлена: {theme_name}\n\n🎮 Меню лобби:", 
+                        call.message.chat.id, 
+                        call.message.message_id,
+                        reply_markup=create_lobby_menu(lobby_code)
+                    )
+            else:
+                print(f"❌ Лобби {lobby_code} не найдено!")
+                bot.answer_callback_query(call.id, "❌ Ошибка: лобби не найдено")
     
     # Обработка голосования
     elif data.startswith('vote_'):
