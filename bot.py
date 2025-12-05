@@ -9,30 +9,31 @@ from datetime import datetime
 from collections import defaultdict, deque
 import os
 
-#
-try:
-    from dotenv import load_dotenv
-    load_dotenv()  
-    print("✅ .env файл загружен")
-except ImportError:
-    print("❌ ОШИБКА: python-dotenv не установлен!")
-    print("Установите: pip install python-dotenv")
-    exit(1)
+# ============ КОНФИГУРАЦИЯ ДЛЯ RAILWAY ============
 
-
-API_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_ID = os.getenv('ADMIN_ID')
-
+API_TOKEN = os.environ.get('BOT_TOKEN')
+ADMIN_ID = os.environ.get('ADMIN_ID')
 
 if not API_TOKEN:
-    print("❌ ОШИБКА: Не найден BOT_TOKEN в .env файле!")
-    print("Создайте файл .env со строкой: BOT_TOKEN=ваш_токен")
+    print("❌ ОШИБКА: Не найден BOT_TOKEN в переменных окружения!")
+    print("В Railway Dashboard:")
+    print("1. Откройте проект")
+    print("2. Нажмите 'Variables'")
+    print("3. Добавьте BOT_TOKEN = ваш_токен")
     exit(1)
 
 if not ADMIN_ID:
-    print("❌ ОШИБКА: Не найден ADMIN_ID в .env файле!")
-    print("Создайте файл .env со строкой: ADMIN_ID=ваш_id")
+    print("❌ ОШИБКА: Не найден ADMIN_ID в переменных окружения!")
+    print("В Railway Dashboard добавьте ADMIN_ID = ваш_id")
     exit(1)
+
+try:
+    ADMIN_ID = int(ADMIN_ID)
+except ValueError:
+    print("❌ ОШИБКА: ADMIN_ID должен быть числом!")
+    exit(1)
+
+print("✅ Конфигурация загружена из переменных окружения Railway")
 
 
 try:
