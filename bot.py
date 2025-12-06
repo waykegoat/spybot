@@ -9,7 +9,7 @@ from datetime import datetime
 from collections import defaultdict, deque
 import os
 
-# ============ КОНФИГУРАЦИЯ ДЛЯ RAILWAY ============
+# ============ КОНФИГУРАЦИЯ ДЛЯ RAILWAY ============#
 
 API_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = os.environ.get('ADMIN_ID')
