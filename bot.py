@@ -44,12 +44,10 @@ print("=" * 50)
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 # ============ ПРОВЕРКА ПОДПИСКИ ============
-# Получаем настройки канала из .env
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@dimbub')
 CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/dimbub')
 CHANNEL_ID = os.getenv('CHANNEL_ID', '-1003369490880')
 
-# Преобразуем CHANNEL_ID в число если нужно
 try:
     CHANNEL_ID = int(CHANNEL_ID)
 except ValueError:
@@ -57,8 +55,7 @@ except ValueError:
 
 def check_subscription(user_id):
     """Проверяет, подписан ли пользователь на канал"""
-    print(f"🔍 Проверяем подписку для {user_id}")
-    return True  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОЧКУ ДЛЯ ТЕСТА!
+    return True
     
     try:
         member = bot.get_chat_member(CHANNEL_ID, user_id)
@@ -947,6 +944,186 @@ def handle_callback(call):
     data = call.data
     
     try:
+        # ============ ОБЩИЕ КНОПКИ (не зависят от лобби) ============
+        
+        # Создать новое лобби (после закрытия предыдущего)
+        if data == 'create_new_lobby':
+            handle_new(types.Message(
+                message_id=call.message.message_id,
+                from_user=call.from_user,
+                date=call.message.date,
+                chat=call.message.chat,
+                content_type='text',
+                options={},
+                json_string='',
+                text='/new'
+            ))
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            return
+        
+        # Показать глобальную статистику
+        elif data == 'global_stats':
+            uptime = time.time() - global_stats['start_time']
+            hours = int(uptime // 3600)
+            minutes = int((uptime % 3600) // 60)
+            
+            stats_text = f"""
+<b>📊 Глобальная статистика:</b>
+
+🎮 Всего игр: {global_stats['total_games']}
+👥 Уникальных игроков: {global_stats['total_players']}
+🏠 Создано лобби: {global_stats['total_lobbies']}
+
+🏆 Побед шпионов: {global_stats['spy_wins']}
+🎯 Побед игроков: {global_stats['players_wins']}
+
+⏱️ Время работы: {hours}ч {minutes}м
+            """
+            
+            bot.edit_message_text(stats_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=create_host_options_keyboard())
+            return
+        
+        # Показать правила
+        elif data == 'show_rules':
+            rules_text = """
+<b>📖 Правила игры "Шпион":</b>
+
+1. <b>Цель игры:</b>
+   • Один из игроков (шпион) НЕ знает слово
+   • Шпион должен скрывать это
+   • Остальные должны вычислить шпиона
+
+2. <b>Ход игры:</b>
+   • Каждый раунд - новое слово и шпион
+   • Игроки по очереди описывают слово
+   • После обсуждения - голосование
+   • Если шпиона вычислили - побеждают игроки
+   • Если шпион остался незамеченным - побеждает шпион
+
+3. <b>Особенности:</b>
+   • Каждый 5-й раунд - все шпионы
+   • Максимум 7 игроков в лобби
+
+<b>Удачи в игре! 🎮</b>
+            """
+            bot.edit_message_text(rules_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=create_host_options_keyboard())
+            return
+        
+        # Вернуться в главное меню
+        elif data == 'go_to_main':
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, 
+                           "🏠 <b>Главное меню</b>\n\nВыберите действие:", 
+                           reply_markup=get_main_keyboard())
+            return
+        
+        # Отмена отправки сообщения
+        elif data == 'cancel':
+            bot.answer_callback_query(call.id, "❌ Отменено")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            return
+        
+        # Админ панель
+        elif data in ['admin_stats', 'admin_lobbies', 'admin_close']:
+            if not is_admin(user_id):
+                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
+                return
+            
+            if data == 'admin_stats':
+                uptime = time.time() - global_stats['start_time']
+                hours = int(uptime // 3600)
+                minutes = int((uptime % 3600) // 60)
+                
+                stats_text = f"""
+<b>📊 Глобальная статистика:</b>
+
+🎮 Всего игр: {global_stats['total_games']}
+👥 Уникальных игроков: {global_stats['total_players']}
+🏠 Создано лобби: {global_stats['total_lobbies']}
+
+🏆 Побед шпионов: {global_stats['spy_wins']}
+🎯 Побед игроков: {global_stats['players_wins']}
+
+🔴 Активных лобби: {global_stats['active_lobbies']}
+⏱️ Время работы: {hours}ч {minutes}м
+                """
+                
+                bot.edit_message_text(stats_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=types.InlineKeyboardMarkup().add(
+                                        types.InlineKeyboardButton("🎮 Лобби", callback_data="admin_lobbies"),
+                                        types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
+                                    ))
+            elif data == 'admin_lobbies':
+                if not lobbies:
+                    lobbies_text = "🔴 Активных лобби нет"
+                else:
+                    lobbies_text = "<b>🎮 Активные лобби:</b>\n\n"
+                    for code, lobby in lobbies.items():
+                        created_time = datetime.fromtimestamp(lobby['created_time']).strftime('%H:%M')
+                        players_count = len(lobby['players'])
+                        status = "🟢 Игра" if lobby['game_started'] else "🟡 Ожидание"
+                        
+                        lobbies_text += f"<code>{code}</code> - {players_count}/7 игроков\n"
+                        lobbies_text += f"Ведущий: {lobby['players'][0]['name']}\n"
+                        lobbies_text += f"Создано: {created_time} | Статус: {status}\n"
+                        lobbies_text += f"Раунд: {lobby['round_number']}\n"
+                        lobbies_text += "─" * 20 + "\n"
+                
+                bot.edit_message_text(lobbies_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=types.InlineKeyboardMarkup().add(
+                                        types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
+                                        types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
+                                    ))
+            elif data == 'admin_close':
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+            return
+        
+        # ============ КНОПКИ, ЗАВИСЯЩИЕ ОТ ЛОББИ ============
+        
+        # Проверяем, есть ли код лобби в данных
+        lobby_code = None
+        for prefix in ['menu_', 'start_', 'theme_menu_', 'set_theme_', 'vote_', 
+                      'vote_none_', 'game_menu_', 'vote_menu_', 'end_game_',
+                      'end_round_', 'new_round_', 'leave_', 'send_', 'toggle_host_',
+                      'toggle_auto_', 'view_votes_', 'surrender_', 'lobby_chat_',
+                      'game_chat_', 'stats_', 'round_stats_', 'players_']:
+            if data.startswith(prefix):
+                # Извлекаем код лобби из данных
+                lobby_code = data[len(prefix):]
+                # Удаляем дополнительные части если есть
+                if '_' in lobby_code:
+                    lobby_code = lobby_code.split('_')[0] if not lobby_code.startswith('none') else lobby_code
+        
+        # Если лобби не найдено, показываем сообщение об ошибке
+        if lobby_code and lobby_code not in lobbies:
+            bot.answer_callback_query(call.id, "⚠️ Лобби больше не существует!")
+            
+            # Предлагаем создать новое лобби
+            bot.edit_message_text(
+                "❌ <b>Лобби больше не существует!</b>\n\nВы можете создать новое лобби или вернуться в главное меню.",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=types.InlineKeyboardMarkup(row_width=2).add(
+                    types.InlineKeyboardButton("🎮 Создать новое лобби", callback_data="create_new_lobby"),
+                    types.InlineKeyboardButton("📊 Глобальная статистика", callback_data="global_stats"),
+                    types.InlineKeyboardButton("📖 Правила игры", callback_data="show_rules"),
+                    types.InlineKeyboardButton("🏠 В главное меню", callback_data="go_to_main")
+                )
+            )
+            return
+        
+        # ============ ОБРАБОТКА КНОПОК ЛОББИ ============
+        
         # Меню лобби
         if data.startswith('menu_'):
             lobby_code = data[5:]
@@ -1202,87 +1379,6 @@ def handle_callback(call):
                     bot.answer_callback_query(call.id, "✅ Сообщение отправлено!")
                     bot.delete_message(call.message.chat.id, call.message.message_id)
         
-        # Отмена
-        elif data == 'cancel':
-            bot.answer_callback_query(call.id, "❌ Отменено")
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        
-        # Создать новое лобби (после закрытия предыдущего)
-        elif data == 'create_new_lobby':
-            handle_new(types.Message(
-                message_id=call.message.message_id,
-                from_user=call.from_user,
-                date=call.message.date,
-                chat=call.message.chat,
-                content_type='text',
-                options={},
-                json_string='',
-                text='/new'
-            ))
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-        
-        # Показать глобальную статистику
-        elif data == 'global_stats':
-            uptime = time.time() - global_stats['start_time']
-            hours = int(uptime // 3600)
-            minutes = int((uptime % 3600) // 60)
-            
-            stats_text = f"""
-<b>📊 Глобальная статистика:</b>
-
-🎮 Всего игр: {global_stats['total_games']}
-👥 Уникальных игроков: {global_stats['total_players']}
-🏠 Создано лобби: {global_stats['total_lobbies']}
-
-🏆 Побед шпионов: {global_stats['spy_wins']}
-🎯 Побед игроков: {global_stats['players_wins']}
-
-⏱️ Время работы: {hours}ч {minutes}м
-            """
-            
-            bot.edit_message_text(stats_text, 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_host_options_keyboard())
-        
-        # Показать правила
-        elif data == 'show_rules':
-            rules_text = """
-<b>📖 Правила игры "Шпион":</b>
-
-1. <b>Цель игры:</b>
-   • Один из игроков (шпион) НЕ знает слово
-   • Шпион должен скрывать это
-   • Остальные должны вычислить шпиона
-
-2. <b>Ход игры:</b>
-   • Каждый раунд - новое слово и шпион
-   • Игроки по очереди описывают слово
-   • После обсуждения - голосование
-   • Если шпиона вычислили - побеждают игроки
-   • Если шпион остался незамеченным - побеждает шпион
-
-3. <b>Особенности:</b>
-   • Каждый 5-й раунд - все шпионы
-   • Максимум 7 игроков в лобби
-
-<b>Удачи в игре! 🎮</b>
-            """
-            bot.edit_message_text(rules_text, 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_host_options_keyboard())
-        
-        # Вернуться в главное меню
-        elif data == 'go_to_main':
-            bot.edit_message_text("🏠 <b>Главное меню</b>\n\nВыберите действие:", 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=types.InlineKeyboardMarkup().add(
-                                    types.InlineKeyboardButton("🎮 Создать лобби", callback_data="create_new_lobby"),
-                                    types.InlineKeyboardButton("📖 Правила", callback_data="show_rules")
-                                ))
-        
         # Переключить ведущего
         elif data.startswith('toggle_host_'):
             lobby_code = data[12:]
@@ -1495,75 +1591,6 @@ def handle_callback(call):
                                     reply_markup=types.InlineKeyboardMarkup().add(
                                         types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
                                     ))
-        
-        # Админ статистика
-        elif data == 'admin_stats':
-            if not is_admin(user_id):
-                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
-                return
-            
-            uptime = time.time() - global_stats['start_time']
-            hours = int(uptime // 3600)
-            minutes = int((uptime % 3600) // 60)
-            
-            stats_text = f"""
-<b>📊 Глобальная статистика:</b>
-
-🎮 Всего игр: {global_stats['total_games']}
-👥 Уникальных игроков: {global_stats['total_players']}
-🏠 Создано лобби: {global_stats['total_lobbies']}
-
-🏆 Побед шпионов: {global_stats['spy_wins']}
-🎯 Побед игроков: {global_stats['players_wins']}
-
-🔴 Активных лобби: {global_stats['active_lobbies']}
-⏱️ Время работы: {hours}ч {minutes}м
-            """
-            
-            bot.edit_message_text(stats_text, 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=types.InlineKeyboardMarkup().add(
-                                    types.InlineKeyboardButton("🎮 Лобби", callback_data="admin_lobbies"),
-                                    types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
-                                ))
-        
-        # Админ лобби
-        elif data == 'admin_lobbies':
-            if not is_admin(user_id):
-                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
-                return
-            
-            if not lobbies:
-                lobbies_text = "🔴 Активных лобби нет"
-            else:
-                lobbies_text = "<b>🎮 Активные лобби:</b>\n\n"
-                for code, lobby in lobbies.items():
-                    created_time = datetime.fromtimestamp(lobby['created_time']).strftime('%H:%M')
-                    players_count = len(lobby['players'])
-                    status = "🟢 Игра" if lobby['game_started'] else "🟡 Ожидание"
-                    
-                    lobbies_text += f"<code>{code}</code> - {players_count}/7 игроков\n"
-                    lobbies_text += f"Ведущий: {lobby['players'][0]['name']}\n"
-                    lobbies_text += f"Создано: {created_time} | Статус: {status}\n"
-                    lobbies_text += f"Раунд: {lobby['round_number']}\n"
-                    lobbies_text += "─" * 20 + "\n"
-            
-            bot.edit_message_text(lobbies_text, 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=types.InlineKeyboardMarkup().add(
-                                    types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
-                                    types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
-                                ))
-        
-        # Закрыть админ панель
-        elif data == 'admin_close':
-            if not is_admin(user_id):
-                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
-                return
-            
-            bot.delete_message(call.message.chat.id, call.message.message_id)
     
     except Exception as e:
         print(f"Ошибка в callback: {e}")
