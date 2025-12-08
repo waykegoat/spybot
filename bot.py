@@ -298,6 +298,7 @@ def get_game_keyboard():
     return keyboard
 
 def create_lobby_menu(lobby_code):
+    """Инлайн-меню лобби (без кнопок выхода и списка игроков)"""
     lobby = lobbies[lobby_code]
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
@@ -323,9 +324,7 @@ def create_lobby_menu(lobby_code):
         )
     
     keyboard.add(
-        types.InlineKeyboardButton("👥 Список игроков", callback_data=f"players_{lobby_code}"),
         types.InlineKeyboardButton("💬 Чат лобби", callback_data=f"lobby_chat_{lobby_code}"),
-        types.InlineKeyboardButton("❌ Выйти из лобби", callback_data=f"leave_{lobby_code}")
     )
     
     return keyboard
@@ -369,6 +368,7 @@ def create_voting_keyboard(lobby_code, user_id):
     return keyboard
 
 def create_game_menu_keyboard(lobby_code):
+    """Инлайн-меню игры (без кнопок выхода и списка игроков)"""
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
     keyboard.add(
@@ -377,17 +377,24 @@ def create_game_menu_keyboard(lobby_code):
     )
     keyboard.add(
         types.InlineKeyboardButton("📊 Статистика раунда", callback_data=f"round_stats_{lobby_code}"),
-        types.InlineKeyboardButton("👥 Список игроков", callback_data=f"game_players_{lobby_code}")
+        types.InlineKeyboardButton("💬 Чат лобби", callback_data=f"game_chat_{lobby_code}")
     )
     keyboard.add(
-        types.InlineKeyboardButton("💬 Чат лобби", callback_data=f"game_chat_{lobby_code}"),
-        types.InlineKeyboardButton("❌ Сдаться", callback_data=f"surrender_{lobby_code}")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("🏁 Завершить раунд", callback_data=f"end_round_{lobby_code}"),
+        types.InlineKeyboardButton("❌ Сдаться", callback_data=f"surrender_{lobby_code}"),
         types.InlineKeyboardButton("🔙 В меню лобби", callback_data=f"menu_{lobby_code}")
     )
     
+    return keyboard
+
+def create_host_options_keyboard():
+    """Клавиатура для выбора действий после закрытия лобби ведущим"""
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        types.InlineKeyboardButton("🎮 Создать новое лобби", callback_data="create_new_lobby"),
+        types.InlineKeyboardButton("📊 Глобальная статистика", callback_data="global_stats"),
+        types.InlineKeyboardButton("📖 Правила игры", callback_data="show_rules"),
+        types.InlineKeyboardButton("🏠 В главное меню", callback_data="go_to_main")
+    )
     return keyboard
 
 # Основные обработчики команд
@@ -607,7 +614,11 @@ def handle_leave(message):
             del chat_messages[lobby_code]
         
         global_stats['active_lobbies'] = len(lobbies)
-        bot.send_message(message.chat.id, "✅ Вы закрыли лобби и вышли из игры.")
+        
+        # Показываем ведущему опции после закрытия лобби
+        bot.send_message(message.chat.id, 
+                        "✅ Вы закрыли лобби и вышли из игры.\n\n<b>Что вы хотите сделать дальше?</b>",
+                        reply_markup=create_host_options_keyboard())
         
     else:
         # Обычный игрок покидает
@@ -615,6 +626,7 @@ def handle_leave(message):
         del user_to_lobby[user_id]
         
         bot.send_message(message.chat.id, f"✅ Вы покинули лобби {lobby_code}.")
+        bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
         
         broadcast_to_lobby(lobby_code, 
                           f"👤 <b>{user_name}</b> покинул лобби.\nОсталось игроков: {len(lobby['players'])}/7",
@@ -633,7 +645,6 @@ def handle_leave(message):
             del chat_messages[lobby_code]
         global_stats['active_lobbies'] = len(lobbies)
     
-    bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
     save_global_stats()
 
 @bot.message_handler(commands=['menu'])
@@ -1157,7 +1168,7 @@ def handle_callback(call):
                 bot.answer_callback_query(call.id, "✅ Новый раунд начат!")
                 bot.delete_message(call.message.chat.id, call.message.message_id)
         
-        # Выйти из лобби
+        # Выйти из лобби (из инлайн-меню)
         elif data.startswith('leave_'):
             lobby_code = data[6:]
             if lobby_code in lobbies:
@@ -1195,6 +1206,82 @@ def handle_callback(call):
         elif data == 'cancel':
             bot.answer_callback_query(call.id, "❌ Отменено")
             bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Создать новое лобби (после закрытия предыдущего)
+        elif data == 'create_new_lobby':
+            handle_new(types.Message(
+                message_id=call.message.message_id,
+                from_user=call.from_user,
+                date=call.message.date,
+                chat=call.message.chat,
+                content_type='text',
+                options={},
+                json_string='',
+                text='/new'
+            ))
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Показать глобальную статистику
+        elif data == 'global_stats':
+            uptime = time.time() - global_stats['start_time']
+            hours = int(uptime // 3600)
+            minutes = int((uptime % 3600) // 60)
+            
+            stats_text = f"""
+<b>📊 Глобальная статистика:</b>
+
+🎮 Всего игр: {global_stats['total_games']}
+👥 Уникальных игроков: {global_stats['total_players']}
+🏠 Создано лобби: {global_stats['total_lobbies']}
+
+🏆 Побед шпионов: {global_stats['spy_wins']}
+🎯 Побед игроков: {global_stats['players_wins']}
+
+⏱️ Время работы: {hours}ч {minutes}м
+            """
+            
+            bot.edit_message_text(stats_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=create_host_options_keyboard())
+        
+        # Показать правила
+        elif data == 'show_rules':
+            rules_text = """
+<b>📖 Правила игры "Шпион":</b>
+
+1. <b>Цель игры:</b>
+   • Один из игроков (шпион) НЕ знает слово
+   • Шпион должен скрывать это
+   • Остальные должны вычислить шпиона
+
+2. <b>Ход игры:</b>
+   • Каждый раунд - новое слово и шпион
+   • Игроки по очереди описывают слово
+   • После обсуждения - голосование
+   • Если шпиона вычислили - побеждают игроки
+   • Если шпион остался незамеченным - побеждает шпион
+
+3. <b>Особенности:</b>
+   • Каждый 5-й раунд - все шпионы
+   • Максимум 7 игроков в лобби
+
+<b>Удачи в игре! 🎮</b>
+            """
+            bot.edit_message_text(rules_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=create_host_options_keyboard())
+        
+        # Вернуться в главное меню
+        elif data == 'go_to_main':
+            bot.edit_message_text("🏠 <b>Главное меню</b>\n\nВыберите действие:", 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=types.InlineKeyboardMarkup().add(
+                                    types.InlineKeyboardButton("🎮 Создать лобби", callback_data="create_new_lobby"),
+                                    types.InlineKeyboardButton("📖 Правила", callback_data="show_rules")
+                                ))
         
         # Переключить ведущего
         elif data.startswith('toggle_host_'):
@@ -1351,6 +1438,63 @@ def handle_callback(call):
                                         reply_markup=types.InlineKeyboardMarkup().add(
                                             types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
                                         ))
+        
+        # Статистика лобби
+        elif data.startswith('stats_'):
+            lobby_code = data[6:]
+            if lobby_code in lobbies and lobby_code in lobby_stats:
+                stats = lobby_stats[lobby_code]
+                stats_text = f"""
+<b>📊 Статистика лобби:</b>
+
+🎮 Сыграно игр: {stats['games_played']}
+🕵️ Побед шпионов: {stats['spy_wins']}
+🎯 Побед игроков: {stats['players_wins']}
+🔁 Сыграно раундов: {stats['rounds_played']}
+
+Текущий раунд: {lobbies[lobby_code]['round_number']}
+                """
+                bot.edit_message_text(stats_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=types.InlineKeyboardMarkup().add(
+                                        types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
+                                    ))
+        
+        # Статистика раунда
+        elif data.startswith('round_stats_'):
+            lobby_code = data[12:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                if not lobby['game_started']:
+                    bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                    return
+                
+                spy_name = "Неизвестно"
+                if lobby['spy_id']:
+                    spy = next((p for p in lobby['players'] if p['id'] == lobby['spy_id']), None)
+                    if spy:
+                        spy_name = spy['name']
+                
+                stats_text = f"""
+<b>📊 Статистика раунда:</b>
+
+Раунд: {lobby['round_number']}
+Тема: {get_theme_name(lobby['theme'])}
+Слово: <code>{lobby['word']}</code>
+Шпион: {spy_name}
+
+Режим: {'🕵️ Все шпионы' if lobby['all_spies_mode'] else '🎮 Обычный'}
+
+Проголосовало: {len(lobby['votes'])}/{len([p for p in lobby['players'] if p['is_playing']])}
+                """
+                bot.edit_message_text(stats_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=types.InlineKeyboardMarkup().add(
+                                        types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
+                                    ))
         
         # Админ статистика
         elif data == 'admin_stats':
