@@ -330,15 +330,15 @@ def create_theme_keyboard(lobby_code):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
     keyboard.add(
-        types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"set_theme_dota2_{lobby_code}"),
-        types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"set_theme_clashroyale_{lobby_code}")
+        types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"settheme_dota2_{lobby_code}"),
+        types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"settheme_clashroyale_{lobby_code}")
     )
     keyboard.add(
-        types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"set_theme_brawlstars_{lobby_code}"),
-        types.InlineKeyboardButton("📍 Локации", callback_data=f"set_theme_locations_{lobby_code}")
+        types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"settheme_brawlstars_{lobby_code}"),
+        types.InlineKeyboardButton("📍 Локации", callback_data=f"settheme_locations_{lobby_code}")
     )
     keyboard.add(
-        types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"set_theme_custom_{lobby_code}"),
+        types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"settheme_custom_{lobby_code}"),
         types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
     )
     
@@ -1090,19 +1090,30 @@ def handle_callback(call):
         
         # ============ КНОПКИ, ЗАВИСЯЩИЕ ОТ ЛОББИ ============
         
-        # Проверяем, есть ли код лобби в данных
+        # Извлекаем код лобби из callback данных
         lobby_code = None
-        for prefix in ['menu_', 'start_', 'theme_menu_', 'set_theme_', 'vote_', 
-                      'vote_none_', 'game_menu_', 'vote_menu_', 'end_game_',
-                      'end_round_', 'new_round_', 'leave_', 'send_', 'toggle_host_',
-                      'toggle_auto_', 'view_votes_', 'surrender_', 'lobby_chat_',
-                      'game_chat_', 'stats_', 'round_stats_', 'players_']:
-            if data.startswith(prefix):
-                # Извлекаем код лобби из данных
-                lobby_code = data[len(prefix):]
-                # Удаляем дополнительные части если есть
-                if '_' in lobby_code:
-                    lobby_code = lobby_code.split('_')[0] if not lobby_code.startswith('none') else lobby_code
+        
+        # Для кнопок смены темы (settheme_theme_lobbycode)
+        if data.startswith('settheme_'):
+            # Формат: settheme_dota2_ABC123
+            parts = data.split('_')
+            if len(parts) >= 3:
+                theme = parts[1]
+                lobby_code = parts[2]
+        
+        # Для остальных кнопок с lobby_code
+        elif '_' in data:
+            # Определяем префикс и извлекаем lobby_code
+            prefixes = ['menu_', 'start_', 'theme_menu_', 'vote_', 
+                       'vote_none_', 'game_menu_', 'vote_menu_', 'end_game_',
+                       'end_round_', 'new_round_', 'leave_', 'send_', 'toggle_host_',
+                       'toggle_auto_', 'view_votes_', 'surrender_', 'lobby_chat_',
+                       'game_chat_', 'stats_', 'round_stats_']
+            
+            for prefix in prefixes:
+                if data.startswith(prefix):
+                    lobby_code = data[len(prefix):]
+                    break
         
         # Если лобби не найдено, показываем сообщение об ошибке
         if lobby_code and lobby_code not in lobbies:
@@ -1133,32 +1144,6 @@ def handle_callback(call):
                                     call.message.message_id,
                                     reply_markup=create_lobby_menu(lobby_code))
         
-        # Начать игру
-        elif data.startswith('start_'):
-            lobby_code = data[6:]
-            if lobby_code in lobbies:
-                lobby = lobbies[lobby_code]
-                
-                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-                if not is_host:
-                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать игру!")
-                    return
-                
-                playing_players = [p for p in lobby['players'] if p['is_playing']]
-                if len(playing_players) < 3:
-                    bot.answer_callback_query(call.id, "⚠️ Нужно минимум 3 игрока!")
-                    return
-                
-                lobby['game_started'] = True
-                lobby['round_number'] = 1
-                global_stats['total_games'] += 1
-                lobby_stats[lobby_code]['games_played'] += 1
-                
-                start_round(lobby_code)
-                
-                bot.answer_callback_query(call.id, "✅ Игра начата!")
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-        
         # Меню выбора темы
         elif data.startswith('theme_menu_'):
             lobby_code = data[11:]
@@ -1178,11 +1163,12 @@ def handle_callback(call):
                                     reply_markup=create_theme_keyboard(lobby_code))
         
         # Установить тему
-        elif data.startswith('set_theme_'):
+        elif data.startswith('settheme_'):
+            # Формат: settheme_dota2_ABC123
             parts = data.split('_')
-            if len(parts) >= 4:
-                theme = parts[2]
-                lobby_code = '_'.join(parts[3:])
+            if len(parts) >= 3:
+                theme = parts[1]
+                lobby_code = parts[2]
                 
                 if lobby_code in lobbies:
                     lobby = lobbies[lobby_code]
@@ -1218,6 +1204,32 @@ def handle_callback(call):
                             call.message.message_id,
                             reply_markup=create_lobby_menu(lobby_code)
                         )
+        
+        # Начать игру
+        elif data.startswith('start_'):
+            lobby_code = data[6:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать игру!")
+                    return
+                
+                playing_players = [p for p in lobby['players'] if p['is_playing']]
+                if len(playing_players) < 3:
+                    bot.answer_callback_query(call.id, "⚠️ Нужно минимум 3 игрока!")
+                    return
+                
+                lobby['game_started'] = True
+                lobby['round_number'] = 1
+                global_stats['total_games'] += 1
+                lobby_stats[lobby_code]['games_played'] += 1
+                
+                start_round(lobby_code)
+                
+                bot.answer_callback_query(call.id, "✅ Игра начата!")
+                bot.delete_message(call.message.chat.id, call.message.message_id)
         
         # Голосование
         elif data.startswith('vote_'):
