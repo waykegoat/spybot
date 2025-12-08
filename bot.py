@@ -8,7 +8,6 @@ import time
 from datetime import datetime
 from collections import defaultdict, deque
 import os
-import asyncio
 
 # ============ КОНФИГУРАЦИЯ ДЛЯ RAILWAY ============#
 
@@ -59,21 +58,12 @@ except ValueError:
 def check_subscription(user_id):
     """Проверяет, подписан ли пользователь на канал"""
     print(f"🔍 Проверяем подписку для {user_id}")
-    
-    # ДЛЯ ТЕСТА - закомментируйте return True когда будете готовы
     return True  # ← ЗАКОММЕНТИРУЙТЕ ЭТУ СТРОЧКУ ДЛЯ ТЕСТА!
     
     try:
-        # Убедитесь, что CHANNEL_ID правильный
-        print(f"Канал ID: {CHANNEL_ID}, тип: {type(CHANNEL_ID)}")
-        
         member = bot.get_chat_member(CHANNEL_ID, user_id)
         status = member.status
-        print(f"Статус пользователя {user_id}: {status}")
-        
         is_subscribed = status in ['creator', 'administrator', 'member']
-        print(f"Результат проверки: {is_subscribed}")
-        
         return is_subscribed
         
     except Exception as e:
@@ -81,12 +71,10 @@ def check_subscription(user_id):
         return False
 
 def require_subscription(func):
-    """Декоратор для проверки подписки - РАБОЧАЯ ВЕРСИЯ"""
+    """Декоратор для проверки подписки"""
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
-        user_name = message.from_user.first_name
         
-        # Проверяем подписку
         if not check_subscription(user_id):
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(
@@ -101,9 +89,9 @@ def require_subscription(func):
                 f"После подписки нажмите '✅ Я подписался'",
                 reply_markup=keyboard
             )
-            return  # НЕ вызываем функцию
+            return
         
-        return func(message, *args, **kwargs)  # Вызываем если есть подписка
+        return func(message, *args, **kwargs)
     
     return wrapper
 
@@ -116,7 +104,6 @@ def handle_check_subscription(call):
         bot.answer_callback_query(call.id, "✅ Спасибо за подписку!")
         bot.delete_message(call.message.chat.id, call.message.message_id)
         
-        # Показываем основное меню
         bot.send_message(
             call.message.chat.id,
             "🎮 <b>Добро пожаловать!</b> Теперь вы можете использовать бота.",
@@ -141,12 +128,11 @@ global_stats = {
     'start_time': time.time()
 }
 
-lobbies = {}  # код_лобби -> данные лобби
-user_to_lobby = {}  # user_id -> код_лобби
-all_players = set()  # Все уникальные игроки
-lobby_stats = {}  # код_лобби -> статистика лобби
-chat_messages = defaultdict(deque)  # код_лобби -> последние сообщения
-pending_chat_messages = {}  # user_id -> (код_лобби, сообщение)
+lobbies = {}
+user_to_lobby = {}
+all_players = set()
+lobby_stats = {}
+chat_messages = defaultdict(deque)
 
 # Списки слов по темам
 THEMES = {
@@ -228,8 +214,6 @@ def get_random_word(theme, custom_word=None):
         words = THEMES[theme]
         if words:
             return random.choice(words)
-        else:
-            return "Неизвестное слово"
     
     return "Неизвестное слово"
 
@@ -237,8 +221,8 @@ def save_global_stats():
     try:
         with open('global_stats.json', 'w', encoding='utf-8') as f:
             json.dump(global_stats, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Ошибка сохранения статистики: {e}")
+    except:
+        pass
 
 def load_global_stats():
     global global_stats
@@ -246,12 +230,11 @@ def load_global_stats():
         if os.path.exists('global_stats.json'):
             with open('global_stats.json', 'r', encoding='utf-8') as f:
                 loaded_stats = json.load(f)
-
                 for key in global_stats:
                     if key in loaded_stats:
                         global_stats[key] = loaded_stats[key]
-    except Exception as e:
-        print(f"Ошибка загрузки статистики: {e}")
+    except:
+        pass
 
 def add_chat_message(lobby_code, user_name, message):
     if lobby_code not in chat_messages:
@@ -275,26 +258,18 @@ def broadcast_to_lobby(lobby_code, message, keyboard=None, exclude_user=None):
                 bot.send_message(player['id'], message, reply_markup=keyboard)
             else:
                 bot.send_message(player['id'], message)
-        except Exception as e:
-            print(f"Ошибка отправки сообщения пользователю {player['id']}: {e}")
+        except:
+            pass
 
-def broadcast_to_all(message, keyboard=None):
-    for user_id in all_players:
-        try:
-            if keyboard:
-                bot.send_message(user_id, message, reply_markup=keyboard)
-            else:
-                bot.send_message(user_id, message)
-        except Exception as e:
-            print(f"Ошибка массовой рассылки пользователю {user_id}: {e}")
-
+# Клавиатуры
 def get_main_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     keyboard.add(
         types.KeyboardButton("🎮 Создать лобби"),
         types.KeyboardButton("🔗 Войти в лобби"),
         types.KeyboardButton("📖 Правила"),
-        types.KeyboardButton("ℹ️ Помощь")
+        types.KeyboardButton("ℹ️ Помощь"),
+        types.KeyboardButton("👑 Админ-панель")
     )
     return keyboard
 
@@ -303,7 +278,7 @@ def get_lobby_keyboard():
     keyboard.add(
         types.KeyboardButton("🎮 Меню лобби"),
         types.KeyboardButton("👥 Список игроков"),
-        types.KeyboardButton("⚙️ Настройки темы"),
+        types.KeyboardButton("🎨 Сменить тему"),
         types.KeyboardButton("💬 Чат лобби"),
         types.KeyboardButton("❌ Покинуть лобби")
     )
@@ -317,18 +292,19 @@ def get_game_keyboard():
         types.KeyboardButton("✏️ Изменить голос"),
         types.KeyboardButton("👁️ Посмотреть голоса"),
         types.KeyboardButton("💬 Чат лобби"),
-        types.KeyboardButton("👥 Список игроков")
+        types.KeyboardButton("👥 Список игроков"),
+        types.KeyboardButton("❌ Выйти из игры")
     )
     return keyboard
 
 def create_lobby_menu(lobby_code):
     lobby = lobbies[lobby_code]
-    keyboard = types.InlineKeyboardMarkup()
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
     
     if not lobby['game_started']:
         keyboard.add(
-            types.InlineKeyboardButton("▶️ Начать игру", callback_data=f"start_game_{lobby_code}"),
-            types.InlineKeyboardButton("⚙️ Настройки", callback_data=f"settings_{lobby_code}")
+            types.InlineKeyboardButton("▶️ Начать игру", callback_data=f"start_{lobby_code}"),
+            types.InlineKeyboardButton("🎨 Сменить тему", callback_data=f"theme_menu_{lobby_code}")
         )
         keyboard.add(
             types.InlineKeyboardButton(f"{'✅' if lobby['host_is_player'] else '❌'} Ведущий играет", 
@@ -341,9 +317,14 @@ def create_lobby_menu(lobby_code):
             types.InlineKeyboardButton("⏹️ Завершить игру", callback_data=f"end_game_{lobby_code}"),
             types.InlineKeyboardButton("📊 Статистика", callback_data=f"stats_{lobby_code}")
         )
+        keyboard.add(
+            types.InlineKeyboardButton("🏁 Завершить раунд", callback_data=f"end_round_{lobby_code}"),
+            types.InlineKeyboardButton("🔄 Новый раунд", callback_data=f"new_round_{lobby_code}")
+        )
     
     keyboard.add(
         types.InlineKeyboardButton("👥 Список игроков", callback_data=f"players_{lobby_code}"),
+        types.InlineKeyboardButton("💬 Чат лобби", callback_data=f"lobby_chat_{lobby_code}"),
         types.InlineKeyboardButton("❌ Выйти из лобби", callback_data=f"leave_{lobby_code}")
     )
     
@@ -352,33 +333,16 @@ def create_lobby_menu(lobby_code):
 def create_theme_keyboard(lobby_code):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     
-    # Dota 2
     keyboard.add(
-        types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"theme_dota2_{lobby_code}")
+        types.InlineKeyboardButton("🎮 Dota 2 Герои", callback_data=f"set_theme_dota2_{lobby_code}"),
+        types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"set_theme_clashroyale_{lobby_code}")
     )
-    
-    # Clash Royale
     keyboard.add(
-        types.InlineKeyboardButton("👑 Clash Royale", callback_data=f"theme_clashroyale_{lobby_code}")
+        types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"set_theme_brawlstars_{lobby_code}"),
+        types.InlineKeyboardButton("📍 Локации", callback_data=f"set_theme_locations_{lobby_code}")
     )
-    
-    # Brawl Stars  
     keyboard.add(
-        types.InlineKeyboardButton("⭐ Brawl Stars", callback_data=f"theme_brawlstars_{lobby_code}")
-    )
-    
-    # Локации
-    keyboard.add(
-        types.InlineKeyboardButton("📍 Локации", callback_data=f"theme_locations_{lobby_code}")
-    )
-    
-    # Своя тема
-    keyboard.add(
-        types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"theme_custom_{lobby_code}")
-    )
-    
-    # Назад
-    keyboard.add(
+        types.InlineKeyboardButton("✏️ Своя тема", callback_data=f"set_theme_custom_{lobby_code}"),
         types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
     )
     
@@ -393,7 +357,7 @@ def create_voting_keyboard(lobby_code, user_id):
             keyboard.add(
                 types.InlineKeyboardButton(
                     f"👤 {player['name']}", 
-                    callback_data=f"vote_{player['id']}_{lobby_code}"  # ИСПРАВЛЕНО: поменял порядок
+                    callback_data=f"vote_{player['id']}_{lobby_code}"
                 )
             )
     
@@ -405,7 +369,8 @@ def create_voting_keyboard(lobby_code, user_id):
     return keyboard
 
 def create_game_menu_keyboard(lobby_code):
-    keyboard = types.InlineKeyboardMarkup()
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    
     keyboard.add(
         types.InlineKeyboardButton("🕵️ Голосовать", callback_data=f"vote_menu_{lobby_code}"),
         types.InlineKeyboardButton("👁️ Посмотреть голоса", callback_data=f"view_votes_{lobby_code}")
@@ -415,28 +380,17 @@ def create_game_menu_keyboard(lobby_code):
         types.InlineKeyboardButton("👥 Список игроков", callback_data=f"game_players_{lobby_code}")
     )
     keyboard.add(
-        types.InlineKeyboardButton("❌ Сдаться", callback_data=f"surrender_{lobby_code}"),
-        types.InlineKeyboardButton("🏁 Завершить раунд", callback_data=f"end_round_{lobby_code}")
+        types.InlineKeyboardButton("💬 Чат лобби", callback_data=f"game_chat_{lobby_code}"),
+        types.InlineKeyboardButton("❌ Сдаться", callback_data=f"surrender_{lobby_code}")
     )
+    keyboard.add(
+        types.InlineKeyboardButton("🏁 Завершить раунд", callback_data=f"end_round_{lobby_code}"),
+        types.InlineKeyboardButton("🔙 В меню лобби", callback_data=f"menu_{lobby_code}")
+    )
+    
     return keyboard
 
-def create_admin_keyboard():
-    keyboard = types.InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        types.InlineKeyboardButton("📊 Глобальная статистика", callback_data="admin_stats"),
-        types.InlineKeyboardButton("📢 Массовая рассылка", callback_data="admin_broadcast")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("🎮 Активные лобби", callback_data="admin_lobbies"),
-        types.InlineKeyboardButton("🔄 Сбросить статистику", callback_data="admin_reset")
-    )
-    keyboard.add(
-        types.InlineKeyboardButton("💾 Сохранить данные", callback_data="admin_save"),
-        types.InlineKeyboardButton("❌ Закрыть панель", callback_data="admin_close")
-    )
-    return keyboard
-
-# Обработчики команд
+# Основные обработчики команд
 @bot.message_handler(commands=['start', 'help'])
 @require_subscription
 def handle_start(message):
@@ -461,7 +415,7 @@ def handle_start(message):
 /rules - правила игры
 /vote - голосовать за шпиона
 
-<b>Используйте кнопки ниже или команды для навигации!</b>
+<b>Используйте кнопки ниже для навигации!</b>
     """
     
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
@@ -472,14 +426,12 @@ def handle_new(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     
-    # Проверяем, находится ли пользователь уже в лобби
     if user_id in user_to_lobby:
         lobby_code = user_to_lobby[user_id]
         bot.send_message(message.chat.id, 
-                        f"⚠️ Вы уже находитесь в лобби {lobby_code}. Покиньте его сначала командой /leave")
+                        f"⚠️ Вы уже находитесь в лобби {lobby_code}. Покиньте его сначала.")
         return
     
-    # Создаем новое лобби
     lobby_code = generate_lobby_code()
     
     lobbies[lobby_code] = {
@@ -488,11 +440,13 @@ def handle_new(message):
             'id': user_id,
             'name': user_name,
             'is_host': True,
-            'is_playing': True
+            'is_playing': True,
+            'is_alive': True
         }],
         'game_started': False,
         'all_spies_mode': False,
         'spy_id': None,
+        'previous_spy_id': None,
         'word': None,
         'theme': 'dota2',
         'custom_word': None,
@@ -508,7 +462,6 @@ def handle_new(message):
     global_stats['total_lobbies'] += 1
     global_stats['active_lobbies'] = len(lobbies)
     
-    # Создаем статистику для лобби
     lobby_stats[lobby_code] = {
         'games_played': 0,
         'spy_wins': 0,
@@ -516,21 +469,18 @@ def handle_new(message):
         'rounds_played': 0
     }
     
-    # Информационное сообщение
     info_text = f"""
 <b>✅ Лобби создано!</b>
 
 Код лобби: <code>{lobby_code}</code>
 
-Отправьте этот код друзьям, чтобы они могли присоединиться:
+Отправьте этот код друзьям:
 <code>/join {lobby_code}</code>
-
-Или они могут просто нажать кнопку "🔗 Войти в лобби" и ввести код.
 
 <b>Игроки в лобби (1/7):</b>
 👑 {user_name} (Ведущий)
 
-<b>Используйте кнопки ниже для управления лобби:</b>
+<b>Используйте кнопки ниже для управления:</b>
     """
     
     bot.send_message(message.chat.id, info_text, reply_markup=get_lobby_keyboard())
@@ -544,14 +494,12 @@ def handle_join(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     
-    # Проверяем, находится ли пользователь уже в лобби
     if user_id in user_to_lobby:
         lobby_code = user_to_lobby[user_id]
         bot.send_message(message.chat.id, 
-                        f"⚠️ Вы уже находитесь в лобби {lobby_code}. Покиньте его сначала командой /leave")
+                        f"⚠️ Вы уже находитесь в лобби {lobby_code}.")
         return
     
-    # Получаем код лобби из сообщения
     parts = message.text.split()
     if len(parts) < 2:
         bot.send_message(message.chat.id, 
@@ -560,7 +508,6 @@ def handle_join(message):
     
     lobby_code = parts[1].upper().strip()
     
-    # Проверяем существование лобби
     if lobby_code not in lobbies:
         bot.send_message(message.chat.id, 
                         f"⚠️ Лобби с кодом <code>{lobby_code}</code> не найдено!")
@@ -568,41 +515,36 @@ def handle_join(message):
     
     lobby = lobbies[lobby_code]
     
-    # Проверяем, не начата ли уже игра
     if lobby['game_started']:
         bot.send_message(message.chat.id, 
-                        f"⚠️ Игра в лобби {lobby_code} уже начата! Присоединиться нельзя.")
+                        f"⚠️ Игра в лобби {lobby_code} уже начата!")
         return
     
-    # Проверяем количество игроков
     if len(lobby['players']) >= 7:
         bot.send_message(message.chat.id, 
                         f"⚠️ В лобби {lobby_code} уже максимальное количество игроков (7/7)!")
         return
     
-    # Проверяем, не находится ли игрок уже в лобби
     for player in lobby['players']:
         if player['id'] == user_id:
             bot.send_message(message.chat.id, 
                             f"⚠️ Вы уже в этом лобби!")
             return
     
-    # Добавляем игрока в лобби
     lobby['players'].append({
         'id': user_id,
         'name': user_name,
         'is_host': False,
-        'is_playing': True
+        'is_playing': True,
+        'is_alive': True
     })
     
     user_to_lobby[user_id] = lobby_code
     
-    # Обновляем статистику
     if user_id not in all_players:
         all_players.add(user_id)
         global_stats['total_players'] = len(all_players)
     
-    # Отправляем сообщение новому игроку
     players_list = "\n".join([f"{'👑' if p['is_host'] else '👤'} {p['name']}" 
                              for p in lobby['players']])
     
@@ -614,13 +556,12 @@ def handle_join(message):
 
 <b>Ведущий:</b> {next(p['name'] for p in lobby['players'] if p['is_host'])}
 
-<b>Используйте кнопки ниже для взаимодействия:</b>
+<b>Используйте кнопки ниже:</b>
     """
     
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_lobby_keyboard())
     bot.send_message(message.chat.id, "🎮 Меню лобби:", reply_markup=create_lobby_menu(lobby_code))
     
-    # Уведомляем других игроков
     broadcast_to_lobby(lobby_code, 
                       f"👤 <b>{user_name}</b> присоединился к лобби!\nТеперь игроков: {len(lobby['players'])}/7",
                       exclude_user=user_id)
@@ -632,14 +573,12 @@ def handle_leave(message):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     
-    # Проверяем, находится ли пользователь в лобби
     if user_id not in user_to_lobby:
         bot.send_message(message.chat.id, "⚠️ Вы не находитесь в лобби!")
         return
     
     lobby_code = user_to_lobby[user_id]
     
-    # Если лобби не существует (может быть удалено)
     if lobby_code not in lobbies:
         del user_to_lobby[user_id]
         bot.send_message(message.chat.id, "⚠️ Лобби больше не существует!")
@@ -647,12 +586,10 @@ def handle_leave(message):
         return
     
     lobby = lobbies[lobby_code]
-    
-    # Если пользователь - ведущий
     is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
     
     if is_host:
-        # Ведущий покидает лобби - закрываем лобби
+        # Ведущий покидает - закрываем лобби
         for player in lobby['players']:
             if player['id'] != user_id:
                 try:
@@ -660,11 +597,9 @@ def handle_leave(message):
                                    f"⚠️ Лобби {lobby_code} закрыто, потому что ведущий покинул игру.")
                 except:
                     pass
-            # Удаляем маппинг
             if player['id'] in user_to_lobby:
                 del user_to_lobby[player['id']]
         
-        # Удаляем лобби
         del lobbies[lobby_code]
         if lobby_code in lobby_stats:
             del lobby_stats[lobby_code]
@@ -672,28 +607,24 @@ def handle_leave(message):
             del chat_messages[lobby_code]
         
         global_stats['active_lobbies'] = len(lobbies)
-        
         bot.send_message(message.chat.id, "✅ Вы закрыли лобби и вышли из игры.")
         
     else:
-        # Обычный игрок покидает лобби
+        # Обычный игрок покидает
         lobby['players'] = [p for p in lobby['players'] if p['id'] != user_id]
         del user_to_lobby[user_id]
         
         bot.send_message(message.chat.id, f"✅ Вы покинули лобби {lobby_code}.")
         
-        # Уведомляем других игроков
         broadcast_to_lobby(lobby_code, 
                           f"👤 <b>{user_name}</b> покинул лобби.\nОсталось игроков: {len(lobby['players'])}/7",
                           exclude_user=user_id)
         
-        # Если игра начата и игроков стало меньше 3, завершаем игру
         if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < 3:
             lobby['game_started'] = False
             broadcast_to_lobby(lobby_code, 
                               "⚠️ Игра завершена, потому что осталось меньше 3 игроков.")
     
-    # Если в лобби не осталось игроков, удаляем его
     if lobby_code in lobbies and not lobbies[lobby_code]['players']:
         del lobbies[lobby_code]
         if lobby_code in lobby_stats:
@@ -704,31 +635,6 @@ def handle_leave(message):
     
     bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
     save_global_stats()
-
-@bot.message_handler(commands=['force_leave'])
-def force_leave(message):
-    """Принудительный выход из лобби"""
-    user_id = message.from_user.id
-    
-    if user_id in user_to_lobby:
-        lobby_code = user_to_lobby[user_id]
-        del user_to_lobby[user_id]
-        
-        # Удаляем из списка игроков если лобби существует
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            lobby['players'] = [p for p in lobby['players'] if p['id'] != user_id]
-            
-            # Если лобби пустое, удаляем
-            if not lobby['players']:
-                del lobbies[lobby_code]
-                if lobby_code in lobby_stats:
-                    del lobby_stats[lobby_code]
-        
-        bot.send_message(message.chat.id, f"✅ Принудительно вышел из лобби {lobby_code}")
-        bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
-    else:
-        bot.send_message(message.chat.id, "⚠️ Вы не в лобби")
 
 @bot.message_handler(commands=['menu'])
 @require_subscription
@@ -753,28 +659,20 @@ def handle_rules(message):
 <b>📖 Правила игры "Шпион":</b>
 
 1. <b>Цель игры:</b>
-   • Игроки получают слово из выбранной темы
    • Один из игроков (шпион) НЕ знает слово
-   • Шпион должен скрывать, что он не знает слово
-   • Остальные игроки должны вычислить шпиона
+   • Шпион должен скрывать это
+   • Остальные должны вычислить шпиона
 
 2. <b>Ход игры:</b>
-   • Каждый раунд выбирается новое слово и шпион
-   • Игроки по очереди описывают слово, не называя его прямо
-   • После обсуждения проходит голосование за шпиона
+   • Каждый раунд - новое слово и шпион
+   • Игроки по очереди описывают слово
+   • После обсуждения - голосование
    • Если шпиона вычислили - побеждают игроки
    • Если шпион остался незамеченным - побеждает шпион
 
 3. <b>Особенности:</b>
-   • Каждый 5-й раунд - секретный (все игроки шпионы)
-   • Ведущий может участвовать в игре или только наблюдать
+   • Каждый 5-й раунд - все шпионы
    • Максимум 7 игроков в лобби
-
-4. <b>Как играть:</b>
-   • Создайте лобби командой /new
-   • Пригласите друзей с помощью кода лобби
-   • Выберите тему игры
-   • Начните игру когда все готовы
 
 <b>Удачи в игре! 🎮</b>
     """
@@ -788,7 +686,6 @@ def handle_chat(message):
         bot.send_message(message.chat.id, "⚠️ Вы не находитесь в лобби!")
         return
     
-    # Получаем текст сообщения
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         bot.send_message(message.chat.id, 
@@ -797,16 +694,11 @@ def handle_chat(message):
     
     chat_message = parts[1]
     lobby_code = user_to_lobby[user_id]
-    lobby = lobbies[lobby_code]
     user_name = message.from_user.first_name
     
-    # Добавляем сообщение в историю
     add_chat_message(lobby_code, user_name, chat_message)
-    
-    # Отправляем подтверждение
     bot.send_message(message.chat.id, "✅ Сообщение отправлено в чат лобби!")
     
-    # Рассылаем сообщение другим игрокам
     broadcast_to_lobby(lobby_code, 
                       f"💬 <b>{user_name}:</b> {chat_message}",
                       exclude_user=user_id)
@@ -826,18 +718,16 @@ def handle_vote(message):
         bot.send_message(message.chat.id, "⚠️ Игра еще не начата!")
         return
     
-    # Проверяем, участвует ли игрок в игре
     player = next((p for p in lobby['players'] if p['id'] == user_id), None)
     if not player or not player['is_playing']:
         bot.send_message(message.chat.id, "⚠️ Вы не участвуете в этой игре!")
         return
     
-    # Показываем клавиатуру для голосования
     bot.send_message(message.chat.id, 
-                    "🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока, который по вашему мнению является шпионом:",
+                    "🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока:",
                     reply_markup=create_voting_keyboard(lobby_code, user_id))
 
-# Обработчик текстовых сообщений (для кнопок)
+# Обработчик текстовых сообщений (кнопки)
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     user_id = message.from_user.id
@@ -848,7 +738,7 @@ def handle_text(message):
     
     elif text == "🔗 Войти в лобби":
         bot.send_message(message.chat.id, 
-                        "Введите код лобби для входа:\nПример: <code>ABC123</code>")
+                        "Введите код лобби:\nПример: <code>ABC123</code>")
         bot.register_next_step_handler(message, process_join_code)
     
     elif text == "📖 Правила":
@@ -856,6 +746,16 @@ def handle_text(message):
     
     elif text == "ℹ️ Помощь":
         handle_start(message)
+    
+    elif text == "👑 Админ-панель":
+        if is_admin(user_id):
+            bot.send_message(message.chat.id, "🔧 Админ-панель:", 
+                           reply_markup=types.InlineKeyboardMarkup().add(
+                               types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
+                               types.InlineKeyboardButton("🎮 Лобби", callback_data="admin_lobbies")
+                           ))
+        else:
+            bot.send_message(message.chat.id, "⚠️ У вас нет прав администратора!")
     
     elif text == "🎮 Меню лобби":
         handle_menu(message)
@@ -865,27 +765,27 @@ def handle_text(message):
             lobby_code = user_to_lobby[user_id]
             lobby = lobbies[lobby_code]
             
-            players_list = "\n".join([
-                f"{'👑' if p['is_host'] else '👤'} {p['name']}" + 
-                ("" if not lobby['game_started'] else f" {'🎮' if p['is_playing'] else '👁️'}")
-                for p in lobby['players']
-            ])
+            players_list = []
+            for p in lobby['players']:
+                status = ""
+                if lobby['game_started']:
+                    status = " 🎮" if p['is_playing'] else " 👁️"
+                players_list.append(f"{'👑' if p['is_host'] else '👤'} {p['name']}{status}")
             
             status = "🟢 Игра начата" if lobby['game_started'] else "🟡 Ожидание"
             bot.send_message(message.chat.id, 
-                           f"<b>👥 Игроки в лобби {lobby_code} ({len(lobby['players'])}/7):</b>\n\n{players_list}\n\nСтатус: {status}")
+                           f"<b>👥 Игроки в лобби {lobby_code} ({len(lobby['players'])}/7):</b>\n\n" +
+                           "\n".join(players_list) + f"\n\nСтатус: {status}")
     
-    elif text == "⚙️ Настройки темы":
+    elif text == "🎨 Сменить тему":
         if user_id in user_to_lobby:
             lobby_code = user_to_lobby[user_id]
             lobby = lobbies[lobby_code]
             
-            # Проверяем, является ли пользователь ведущим
             is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            
             if not is_host:
                 bot.send_message(message.chat.id, 
-                               f"⚠️ Только ведущий может менять настройки темы!")
+                               f"⚠️ Только ведущий может менять тему!")
                 return
             
             current_theme = get_theme_name(lobby['theme'])
@@ -895,7 +795,7 @@ def handle_text(message):
                 current_word = ""
             
             theme_text = f"""
-<b>⚙️ Настройки темы:</b>
+<b>🎨 Смена темы:</b>
 
 Текущая тема: {current_theme}
 {current_word}
@@ -908,17 +808,19 @@ def handle_text(message):
         if user_id in user_to_lobby:
             lobby_code = user_to_lobby[user_id]
             
-            # Показываем историю чата
             if lobby_code in chat_messages and chat_messages[lobby_code]:
                 history = ""
-                for msg in list(chat_messages[lobby_code])[-10:]:  # Последние 10 сообщений
+                for msg in list(chat_messages[lobby_code])[-10:]:
                     time_str = datetime.fromtimestamp(msg['time']).strftime('%H:%M')
                     history += f"<b>{msg['user']}</b> ({time_str}): {msg['message']}\n"
                 
                 bot.send_message(message.chat.id, 
-                               f"<b>💬 История чата (последние 10 сообщений):</b>\n\n{history}")
+                               f"<b>💬 История чата:</b>\n\n{history}")
             else:
                 bot.send_message(message.chat.id, "💬 В чате пока нет сообщений.")
+    
+    elif text == "❌ Покинуть лобби":
+        handle_leave(message)
     
     elif text == "🎮 Меню игры":
         if user_id in user_to_lobby:
@@ -942,20 +844,17 @@ def handle_text(message):
                 bot.send_message(message.chat.id, "⚠️ Игра еще не начата!")
                 return
             
-            # Проверяем, участвует ли игрок в игре
             player = next((p for p in lobby['players'] if p['id'] == user_id), None)
             if not player or not player['is_playing']:
                 bot.send_message(message.chat.id, "⚠️ Вы не участвуете в этой игре!")
                 return
             
-            # Удаляем предыдущий голос
             if user_id in lobby['votes']:
                 del lobby['votes'][user_id]
                 bot.send_message(message.chat.id, "✅ Ваш предыдущий голос удален.")
             
-            # Показываем клавиатуру для нового голоса
             bot.send_message(message.chat.id, 
-                            "🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока, который по вашему мнению является шпионом:",
+                            "🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока:",
                             reply_markup=create_voting_keyboard(lobby_code, user_id))
     
     elif text == "👁️ Посмотреть голоса":
@@ -967,13 +866,11 @@ def handle_text(message):
                 bot.send_message(message.chat.id, "⚠️ Игра еще не начата!")
                 return
             
-            # Показываем текущие голоса
             votes_text = "<b>👁️ Текущие голоса:</b>\n\n"
             
             if not lobby['votes']:
                 votes_text += "Пока никто не проголосовал."
             else:
-                # Группируем голоса по игрокам
                 vote_counts = defaultdict(list)
                 for voter_id, voted_id in lobby['votes'].items():
                     voter_name = next((p['name'] for p in lobby['players'] if p['id'] == voter_id), "Неизвестный")
@@ -985,43 +882,39 @@ def handle_text(message):
                 
                 for voted_player, voters in vote_counts.items():
                     votes_text += f"<b>{voted_player}:</b> {len(voters)} голосов\n"
-                    if len(voters) <= 5:  # Показываем имена, если их не много
+                    if len(voters) <= 5:
                         votes_text += f"Проголосовали: {', '.join(voters)}\n"
                     votes_text += "\n"
             
             bot.send_message(message.chat.id, votes_text)
     
-    elif text == "❌ Покинуть лобби":
+    elif text == "❌ Выйти из игры":
         handle_leave(message)
     
     else:
-        # Если пользователь в лобби, предлагаем отправить сообщение в чат
         if user_id in user_to_lobby:
             lobby_code = user_to_lobby[user_id]
-            # Обрезаем текст если слишком длинный
             truncated_text = text[:100] + "..." if len(text) > 100 else text
             bot.send_message(message.chat.id, 
-                           f"Хотите отправить это сообщение в чат лобби?\n\n<code>{truncated_text}</code>",
+                           f"Отправить в чат лобби?\n\n<code>{truncated_text}</code>",
                            reply_markup=types.InlineKeyboardMarkup().add(
-                               types.InlineKeyboardButton("✅ Да", callback_data=f"send_chat_{lobby_code}_{text[:100]}"),
-                               types.InlineKeyboardButton("❌ Нет", callback_data="cancel_chat")
+                               types.InlineKeyboardButton("✅ Да", callback_data=f"send_{lobby_code}_{text[:50]}"),
+                               types.InlineKeyboardButton("❌ Нет", callback_data="cancel")
                            ))
         else:
             bot.send_message(message.chat.id, 
-                           "Используйте кнопки ниже или команды для навигации:", 
+                           "Используйте кнопки ниже:", 
                            reply_markup=get_main_keyboard())
 
 def process_join_code(message):
     user_id = message.from_user.id
     lobby_code = message.text.upper().strip()
     
-    # Проверяем формат кода (3 буквы + 3 цифры)
     if len(lobby_code) != 6 or not lobby_code[:3].isalpha() or not lobby_code[3:].isdigit():
         bot.send_message(message.chat.id, 
-                        "⚠️ Неверный формат кода! Код должен состоять из 3 букв и 3 цифр (например: ABC123)")
+                        "⚠️ Неверный формат кода! Пример: <code>ABC123</code>")
         return
     
-    # Пытаемся присоединиться
     if lobby_code in lobbies:
         handle_join(types.Message(
             message_id=message.message_id,
@@ -1034,388 +927,534 @@ def process_join_code(message):
             text=f"/join {lobby_code}"
         ))
     else:
-        bot.send_message(message.chat.id, f"⚠️ Лобби с кодом <code>{lobby_code}</code> не найдено!")
+        bot.send_message(message.chat.id, f"⚠️ Лобби <code>{lobby_code}</code> не найдено!")
 
-# Обработчик callback-запросов
+# Основной обработчик callback-запросов
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     user_id = call.from_user.id
     data = call.data
     
-    # Обработка меню лобби
-    if data.startswith('menu_'):
-        lobby_code = data[5:]
-        if lobby_code in lobbies and user_id in user_to_lobby and user_to_lobby[user_id] == lobby_code:
-            bot.edit_message_text("🎮 Меню лобби:", 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_lobby_menu(lobby_code))
-    
-    # Обработка начала игры
-    elif data.startswith('start_game_'):
-        lobby_code = data[11:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать игру!")
-                return
-            
-            # Проверяем количество игроков
-            playing_players = [p for p in lobby['players'] if p['is_playing']]
-            if len(playing_players) < 3:
-                bot.answer_callback_query(call.id, "⚠️ Для начала игры нужно минимум 3 игрока!")
-                return
-            
-            # Начинаем игру
-            lobby['game_started'] = True
-            lobby['round_number'] = 1
-            global_stats['total_games'] += 1
-            lobby_stats[lobby_code]['games_played'] += 1
-            
-            # Начинаем первый раунд
-            start_round(lobby_code)
-            
-            bot.answer_callback_query(call.id, "✅ Игра начата!")
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-    
-    # Обработка настроек
-    elif data.startswith('settings_'):
-        lobby_code = data[10:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять настройки!")
-                return
-            
-            current_theme = get_theme_name(lobby['theme'])
-            if lobby['theme'] == 'custom' and lobby['custom_word']:
-                current_word = f"\nТекущее слово: <code>{lobby['custom_word']}</code>"
-            else:
-                current_word = ""
-            
-            theme_text = f"""
-<b>⚙️ Настройки темы:</b>
-
-Текущая тема: {current_theme}
-{current_word}
-
-Выберите новую тему:
-            """
-            bot.edit_message_text(theme_text, 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_theme_keyboard(lobby_code))
-    
-    # Обработка выбора темы
-    elif data.startswith('theme_'):
-        parts = data.split('_')
-        if len(parts) >= 3:
-            theme = parts[1]
-            lobby_code = '_'.join(parts[2:])
-            
+    try:
+        # Меню лобби
+        if data.startswith('menu_'):
+            lobby_code = data[5:]
+            if lobby_code in lobbies:
+                bot.edit_message_text("🎮 Меню лобби:", 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=create_lobby_menu(lobby_code))
+        
+        # Начать игру
+        elif data.startswith('start_'):
+            lobby_code = data[6:]
             if lobby_code in lobbies:
                 lobby = lobbies[lobby_code]
                 
-                # Проверяем, является ли пользователь ведущим
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать игру!")
+                    return
+                
+                playing_players = [p for p in lobby['players'] if p['is_playing']]
+                if len(playing_players) < 3:
+                    bot.answer_callback_query(call.id, "⚠️ Нужно минимум 3 игрока!")
+                    return
+                
+                lobby['game_started'] = True
+                lobby['round_number'] = 1
+                global_stats['total_games'] += 1
+                lobby_stats[lobby_code]['games_played'] += 1
+                
+                start_round(lobby_code)
+                
+                bot.answer_callback_query(call.id, "✅ Игра начата!")
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Меню выбора темы
+        elif data.startswith('theme_menu_'):
+            lobby_code = data[11:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
                 is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
                 if not is_host:
                     bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять тему!")
                     return
                 
-                # Устанавливаем тему
-                lobby['theme'] = theme
+                current_theme = get_theme_name(lobby['theme'])
+                theme_text = f"<b>🎨 Выберите тему:</b>\n\nТекущая: {current_theme}"
+                bot.edit_message_text(theme_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=create_theme_keyboard(lobby_code))
+        
+        # Установить тему
+        elif data.startswith('set_theme_'):
+            parts = data.split('_')
+            if len(parts) >= 4:
+                theme = parts[2]
+                lobby_code = '_'.join(parts[3:])
                 
-                # Если выбрана своя тема, запрашиваем слово
-                if theme == 'custom':
-                    msg = bot.send_message(call.message.chat.id, 
-                                         "✏️ Введите слово для игры:")
+                if lobby_code in lobbies:
+                    lobby = lobbies[lobby_code]
                     
-                    def process_custom_word(message):
-                        if message.text:
-                            lobby['custom_word'] = message.text.strip()
-                            bot.send_message(message.chat.id, 
-                                           f"✅ Слово установлено: <code>{lobby['custom_word']}</code>")
-                            bot.send_message(message.chat.id, 
-                                           "🎮 Меню лобби:", 
-                                           reply_markup=create_lobby_menu(lobby_code))
+                    is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                    if not is_host:
+                        bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять тему!")
+                        return
                     
-                    bot.register_next_step_handler(msg, process_custom_word)
-                    bot.answer_callback_query(call.id, "✏️ Введите слово")
+                    lobby['theme'] = theme
                     
+                    if theme == 'custom':
+                        msg = bot.send_message(call.message.chat.id, "✏️ Введите слово для игры:")
+                        
+                        def process_custom_word(message):
+                            if message.text:
+                                lobby['custom_word'] = message.text.strip()
+                                bot.send_message(message.chat.id, 
+                                               f"✅ Слово установлено: <code>{lobby['custom_word']}</code>")
+                                bot.send_message(message.chat.id, 
+                                               "🎮 Меню лобби:", 
+                                               reply_markup=create_lobby_menu(lobby_code))
+                        
+                        bot.register_next_step_handler(msg, process_custom_word)
+                        bot.answer_callback_query(call.id, "✏️ Введите слово")
+                        
+                    else:
+                        theme_name = get_theme_name(theme)
+                        bot.answer_callback_query(call.id, f"✅ Тема: {theme_name}")
+                        bot.edit_message_text(
+                            f"✅ Тема установлена: {theme_name}\n\n🎮 Меню лобби:", 
+                            call.message.chat.id, 
+                            call.message.message_id,
+                            reply_markup=create_lobby_menu(lobby_code)
+                        )
+        
+        # Голосование
+        elif data.startswith('vote_'):
+            parts = data.split('_')
+            if len(parts) >= 2:
+                if parts[1] == 'none':
+                    lobby_code = parts[2]
+                    if lobby_code in lobbies:
+                        lobby = lobbies[lobby_code]
+                        
+                        if not lobby['game_started']:
+                            bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                            return
+                        
+                        player = next((p for p in lobby['players'] if p['id'] == user_id), None)
+                        if not player or not player['is_playing']:
+                            bot.answer_callback_query(call.id, "⚠️ Вы не можете голосовать!")
+                            return
+                        
+                        lobby['votes'][user_id] = 'none'
+                        bot.answer_callback_query(call.id, "✅ Вы проголосовали за НИКОГО")
+                        check_voting_complete(lobby_code)
                 else:
-                    # Для обычных тем
-                    theme_name = get_theme_name(theme)
+                    voted_id = int(parts[1])
+                    lobby_code = parts[2]
                     
-                    bot.answer_callback_query(call.id, f"✅ Тема: {theme_name}")
-                    bot.edit_message_text(
-                        f"✅ Тема установлена: {theme_name}\n\n🎮 Меню лобби:", 
-                        call.message.chat.id, 
-                        call.message.message_id,
-                        reply_markup=create_lobby_menu(lobby_code)
-                    )
-    
-    # Обработка голосования - ИСПРАВЛЕНО!
-    elif data.startswith('vote_'):
-        parts = data.split('_')
-        if len(parts) >= 2:
-            if parts[1] == 'none':
-                # Голос за "никого"
-                lobby_code = parts[2]
-                if lobby_code in lobbies:
-                    lobby = lobbies[lobby_code]
-                    
-                    if not lobby['game_started']:
-                        bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
-                        return
-                    
-                    # Проверяем, может ли пользователь голосовать
-                    player = next((p for p in lobby['players'] if p['id'] == user_id), None)
-                    if not player or not player['is_playing']:
-                        bot.answer_callback_query(call.id, "⚠️ Вы не можете голосовать!")
-                        return
-                    
-                    lobby['votes'][user_id] = 'none'
-                    bot.answer_callback_query(call.id, "✅ Вы проголосовали за НИКОГО")
-                    
-                    # Проверяем, все ли проголосовали
-                    check_voting_complete(lobby_code)
-            else:
-                # Голос за игрока
-                voted_id = int(parts[1])
-                lobby_code = parts[2]
-                
-                if lobby_code in lobbies:
-                    lobby = lobbies[lobby_code]
-                    
-                    if not lobby['game_started']:
-                        bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
-                        return
-                    
-                    # Проверяем, может ли пользователь голосовать
-                    player = next((p for p in lobby['players'] if p['id'] == user_id), None)
-                    if not player or not player['is_playing']:
-                        bot.answer_callback_query(call.id, "⚠️ Вы не можете голосовать!")
-                        return
-                    
-                    # Проверяем, существует ли игрок
-                    voted_player = next((p for p in lobby['players'] if p['id'] == voted_id), None)
-                    if not voted_player or not voted_player['is_playing']:
-                        bot.answer_callback_query(call.id, "⚠️ Нельзя проголосовать за этого игрока!")
-                        return
-                    
-                    lobby['votes'][user_id] = voted_id
-                    bot.answer_callback_query(call.id, f"✅ Вы проголосовали за {voted_player['name']}")
-                    
-                    # Проверяем, все ли проголосовали
-                    check_voting_complete(lobby_code)
-    
-    # Обработка меню игры
-    elif data.startswith('game_menu_'):
-        lobby_code = data[10:]
-        if lobby_code in lobbies and user_id in user_to_lobby and user_to_lobby[user_id] == lobby_code:
-            bot.edit_message_text("🎮 Меню игры:", 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_game_menu_keyboard(lobby_code))
-    
-    # Обработка меню голосования
-    elif data.startswith('vote_menu_'):
-        lobby_code = data[10:]
-        if lobby_code in lobbies and user_id in user_to_lobby and user_to_lobby[user_id] == lobby_code:
-            lobby = lobbies[lobby_code]
-            
-            if not lobby['game_started']:
-                bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
-                return
-            
-            bot.edit_message_text("🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока, который по вашему мнению является шпионом:", 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_voting_keyboard(lobby_code, user_id))
-    
-    # Обработка завершения игры досрочно - ИСПРАВЛЕНО!
-    elif data.startswith('end_game_'):
-        lobby_code = data[9:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может завершить игру!")
-                return
-            
-            # Завершаем игру
-            lobby['game_started'] = False
-            lobby['votes'] = {}
-            lobby['spy_id'] = None
-            lobby['word'] = None
-            
-            # Рассылаем уведомление
-            broadcast_to_lobby(lobby_code, 
-                              "⚠️ <b>Игра завершена ведущим!</b>\n\nВсе игроки возвращены в лобби.",
-                              keyboard=get_lobby_keyboard())
-            
-            bot.answer_callback_query(call.id, "✅ Игра завершена!")
-            bot.edit_message_text("✅ Игра завершена! Игроки возвращены в лобби.", 
-                                call.message.chat.id, 
-                                call.message.message_id,
-                                reply_markup=create_lobby_menu(lobby_code))
-    
-    # Обработка завершения раунда
-    elif data.startswith('end_round_'):
-        lobby_code = data[10:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может завершить раунд!")
-                return
-            
-            # Завершаем раунд принудительно
-            end_round(lobby_code)
-            bot.answer_callback_query(call.id, "✅ Раунд завершен!")
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-    
-    # Обработка выхода из лобби
-    elif data.startswith('leave_'):
-        lobby_code = data[6:]
-        if lobby_code in lobbies and user_id in user_to_lobby and user_to_lobby[user_id] == lobby_code:
-            # Вызываем команду /leave
-            handle_leave(types.Message(
-                message_id=call.message.message_id,
-                from_user=call.from_user,
-                date=call.message.date,
-                chat=call.message.chat,
-                content_type='text',
-                options={},
-                json_string='',
-                text='/leave'
-            ))
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-    
-    # Обработка отправки сообщения в чат
-    elif data.startswith('send_chat_'):
-        parts = data.split('_', 3)
-        if len(parts) == 4:
-            lobby_code = parts[2]
-            chat_message = parts[3]
-            
+                    if lobby_code in lobbies:
+                        lobby = lobbies[lobby_code]
+                        
+                        if not lobby['game_started']:
+                            bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                            return
+                        
+                        player = next((p for p in lobby['players'] if p['id'] == user_id), None)
+                        if not player or not player['is_playing']:
+                            bot.answer_callback_query(call.id, "⚠️ Вы не можете голосовать!")
+                            return
+                        
+                        voted_player = next((p for p in lobby['players'] if p['id'] == voted_id), None)
+                        if not voted_player or not voted_player['is_playing']:
+                            bot.answer_callback_query(call.id, "⚠️ Нельзя проголосовать за этого игрока!")
+                            return
+                        
+                        lobby['votes'][user_id] = voted_id
+                        bot.answer_callback_query(call.id, f"✅ Вы проголосовали за {voted_player['name']}")
+                        check_voting_complete(lobby_code)
+        
+        # Меню игры
+        elif data.startswith('game_menu_'):
+            lobby_code = data[10:]
+            if lobby_code in lobbies:
+                bot.edit_message_text("🎮 Меню игры:", 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=create_game_menu_keyboard(lobby_code))
+        
+        # Меню голосования
+        elif data.startswith('vote_menu_'):
+            lobby_code = data[10:]
             if lobby_code in lobbies:
                 lobby = lobbies[lobby_code]
-                user_name = call.from_user.first_name
                 
-                # Добавляем сообщение в историю
-                add_chat_message(lobby_code, user_name, chat_message)
+                if not lobby['game_started']:
+                    bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                    return
                 
-                # Рассылаем сообщение другим игрокам
+                bot.edit_message_text("🕵️ <b>Голосование за шпиона:</b>\nВыберите игрока:", 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=create_voting_keyboard(lobby_code, user_id))
+        
+        # Завершить игру
+        elif data.startswith('end_game_'):
+            lobby_code = data[9:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может завершить игру!")
+                    return
+                
+                lobby['game_started'] = False
+                lobby['votes'] = {}
+                lobby['spy_id'] = None
+                lobby['word'] = None
+                
                 broadcast_to_lobby(lobby_code, 
-                                  f"💬 <b>{user_name}:</b> {chat_message}",
-                                  exclude_user=user_id)
+                                  "⚠️ <b>Игра завершена ведущим!</b>",
+                                  keyboard=get_lobby_keyboard())
                 
-                bot.answer_callback_query(call.id, "✅ Сообщение отправлено в чат!")
+                bot.answer_callback_query(call.id, "✅ Игра завершена!")
+                bot.edit_message_text("✅ Игра завершена!", 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=create_lobby_menu(lobby_code))
+        
+        # Завершить раунд
+        elif data.startswith('end_round_'):
+            lobby_code = data[10:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может завершить раунд!")
+                    return
+                
+                end_round(lobby_code)
+                bot.answer_callback_query(call.id, "✅ Раунд завершен!")
                 bot.delete_message(call.message.chat.id, call.message.message_id)
-    
-    elif data == 'cancel_chat':
-        bot.answer_callback_query(call.id, "❌ Сообщение не отправлено")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-    
-    # Обработка переключения роли ведущего
-    elif data.startswith('toggle_host_'):
-        lobby_code = data[12:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять эту настройку!")
+        
+        # Новый раунд
+        elif data.startswith('new_round_'):
+            lobby_code = data[10:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать новый раунд!")
+                    return
+                
+                start_round(lobby_code)
+                bot.answer_callback_query(call.id, "✅ Новый раунд начат!")
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Выйти из лобби
+        elif data.startswith('leave_'):
+            lobby_code = data[6:]
+            if lobby_code in lobbies:
+                handle_leave(types.Message(
+                    message_id=call.message.message_id,
+                    from_user=call.from_user,
+                    date=call.message.date,
+                    chat=call.message.chat,
+                    content_type='text',
+                    options={},
+                    json_string='',
+                    text='/leave'
+                ))
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Отправить сообщение в чат
+        elif data.startswith('send_'):
+            parts = data.split('_', 2)
+            if len(parts) == 3:
+                lobby_code = parts[1]
+                chat_message = parts[2]
+                
+                if lobby_code in lobbies:
+                    user_name = call.from_user.first_name
+                    
+                    add_chat_message(lobby_code, user_name, chat_message)
+                    broadcast_to_lobby(lobby_code, 
+                                      f"💬 <b>{user_name}:</b> {chat_message}",
+                                      exclude_user=user_id)
+                    
+                    bot.answer_callback_query(call.id, "✅ Сообщение отправлено!")
+                    bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Отмена
+        elif data == 'cancel':
+            bot.answer_callback_query(call.id, "❌ Отменено")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        
+        # Переключить ведущего
+        elif data.startswith('toggle_host_'):
+            lobby_code = data[12:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять эту настройку!")
+                    return
+                
+                lobby['host_is_player'] = not lobby['host_is_player']
+                
+                for player in lobby['players']:
+                    if player['is_host']:
+                        player['is_playing'] = lobby['host_is_player']
+                
+                bot.edit_message_reply_markup(call.message.chat.id, 
+                                             call.message.message_id,
+                                             reply_markup=create_lobby_menu(lobby_code))
+                bot.answer_callback_query(call.id, 
+                                         f"✅ Ведущий теперь {'участвует' if lobby['host_is_player'] else 'не участвует'} в игре!")
+        
+        # Переключить авто-закрытие
+        elif data.startswith('toggle_auto_'):
+            lobby_code = data[12:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
+                if not is_host:
+                    bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять эту настройку!")
+                    return
+                
+                lobby['auto_close'] = not lobby['auto_close']
+                bot.edit_message_reply_markup(call.message.chat.id, 
+                                             call.message.message_id,
+                                             reply_markup=create_lobby_menu(lobby_code))
+                bot.answer_callback_query(call.id, 
+                                         f"✅ Авто-закрытие {'включено' if lobby['auto_close'] else 'выключено'}!")
+        
+        # Просмотр голосов
+        elif data.startswith('view_votes_'):
+            lobby_code = data[11:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                if not lobby['game_started']:
+                    bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                    return
+                
+                votes_text = "<b>👁️ Текущие голоса:</b>\n\n"
+                
+                if not lobby['votes']:
+                    votes_text += "Пока никто не проголосовал."
+                else:
+                    vote_counts = defaultdict(list)
+                    for voter_id, voted_id in lobby['votes'].items():
+                        voter_name = next((p['name'] for p in lobby['players'] if p['id'] == voter_id), "Неизвестный")
+                        if voted_id == 'none':
+                            vote_counts['Никто'].append(voter_name)
+                        else:
+                            voted_name = next((p['name'] for p in lobby['players'] if p['id'] == voted_id), "Неизвестный")
+                            vote_counts[voted_name].append(voter_name)
+                    
+                    for voted_player, voters in vote_counts.items():
+                        votes_text += f"<b>{voted_player}:</b> {len(voters)} голосов\n"
+                        if len(voters) <= 5:
+                            votes_text += f"Проголосовали: {', '.join(voters)}\n"
+                        votes_text += "\n"
+                
+                bot.edit_message_text(votes_text, 
+                                    call.message.chat.id, 
+                                    call.message.message_id,
+                                    reply_markup=types.InlineKeyboardMarkup().add(
+                                        types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
+                                    ))
+        
+        # Сдаться
+        elif data.startswith('surrender_'):
+            lobby_code = data[10:]
+            if lobby_code in lobbies:
+                lobby = lobbies[lobby_code]
+                
+                if not lobby['game_started']:
+                    bot.answer_callback_query(call.id, "⚠️ Игра еще не начата!")
+                    return
+                
+                player = next((p for p in lobby['players'] if p['id'] == user_id), None)
+                if not player or not player['is_playing']:
+                    bot.answer_callback_query(call.id, "⚠️ Вы не участвуете в игре!")
+                    return
+                
+                player['is_playing'] = False
+                broadcast_to_lobby(lobby_code, 
+                                  f"⚠️ <b>{player['name']} сдался и выбывает из игры!</b>")
+                
+                bot.answer_callback_query(call.id, "✅ Вы сдались!")
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+                
+                playing_players = [p for p in lobby['players'] if p['is_playing']]
+                if len(playing_players) < 3:
+                    lobby['game_started'] = False
+                    broadcast_to_lobby(lobby_code, 
+                                      "⚠️ Игра завершена, осталось меньше 3 игроков!")
+        
+        # Чат лобби (из меню)
+        elif data.startswith('lobby_chat_'):
+            lobby_code = data[11:]
+            if lobby_code in lobbies:
+                
+                if lobby_code in chat_messages and chat_messages[lobby_code]:
+                    history = ""
+                    for msg in list(chat_messages[lobby_code])[-10:]:
+                        time_str = datetime.fromtimestamp(msg['time']).strftime('%H:%M')
+                        history += f"<b>{msg['user']}</b> ({time_str}): {msg['message']}\n"
+                    
+                    bot.edit_message_text(f"<b>💬 Чат лобби:</b>\n\n{history}", 
+                                        call.message.chat.id, 
+                                        call.message.message_id,
+                                        reply_markup=types.InlineKeyboardMarkup().add(
+                                            types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
+                                        ))
+                else:
+                    bot.edit_message_text("💬 В чате пока нет сообщений.", 
+                                        call.message.chat.id, 
+                                        call.message.message_id,
+                                        reply_markup=types.InlineKeyboardMarkup().add(
+                                            types.InlineKeyboardButton("🔙 Назад", callback_data=f"menu_{lobby_code}")
+                                        ))
+        
+        # Чат игры
+        elif data.startswith('game_chat_'):
+            lobby_code = data[10:]
+            if lobby_code in lobbies:
+                
+                if lobby_code in chat_messages and chat_messages[lobby_code]:
+                    history = ""
+                    for msg in list(chat_messages[lobby_code])[-10:]:
+                        time_str = datetime.fromtimestamp(msg['time']).strftime('%H:%M')
+                        history += f"<b>{msg['user']}</b> ({time_str}): {msg['message']}\n"
+                    
+                    bot.edit_message_text(f"<b>💬 Чат лобби:</b>\n\n{history}", 
+                                        call.message.chat.id, 
+                                        call.message.message_id,
+                                        reply_markup=types.InlineKeyboardMarkup().add(
+                                            types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
+                                        ))
+                else:
+                    bot.edit_message_text("💬 В чате пока нет сообщений.", 
+                                        call.message.chat.id, 
+                                        call.message.message_id,
+                                        reply_markup=types.InlineKeyboardMarkup().add(
+                                            types.InlineKeyboardButton("🔙 Назад", callback_data=f"game_menu_{lobby_code}")
+                                        ))
+        
+        # Админ статистика
+        elif data == 'admin_stats':
+            if not is_admin(user_id):
+                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
                 return
             
-            # Переключаем настройку
-            lobby['host_is_player'] = not lobby['host_is_player']
+            uptime = time.time() - global_stats['start_time']
+            hours = int(uptime // 3600)
+            minutes = int((uptime % 3600) // 60)
             
-            # Обновляем статус ведущего в списке игроков
-            for player in lobby['players']:
-                if player['is_host']:
-                    player['is_playing'] = lobby['host_is_player']
+            stats_text = f"""
+<b>📊 Глобальная статистика:</b>
+
+🎮 Всего игр: {global_stats['total_games']}
+👥 Уникальных игроков: {global_stats['total_players']}
+🏠 Создано лобби: {global_stats['total_lobbies']}
+
+🏆 Побед шпионов: {global_stats['spy_wins']}
+🎯 Побед игроков: {global_stats['players_wins']}
+
+🔴 Активных лобби: {global_stats['active_lobbies']}
+⏱️ Время работы: {hours}ч {minutes}м
+            """
             
-            bot.edit_message_reply_markup(call.message.chat.id, 
-                                         call.message.message_id,
-                                         reply_markup=create_lobby_menu(lobby_code))
-            bot.answer_callback_query(call.id, 
-                                     f"✅ Ведущий теперь {'участвует' if lobby['host_is_player'] else 'не участвует'} в игре!")
-    
-    # Обработка переключения авто-закрытия
-    elif data.startswith('toggle_auto_'):
-        lobby_code = data[12:]
-        if lobby_code in lobbies:
-            lobby = lobbies[lobby_code]
-            
-            # Проверяем, является ли пользователь ведущим
-            is_host = any(p['id'] == user_id and p['is_host'] for p in lobby['players'])
-            if not is_host:
-                bot.answer_callback_query(call.id, "⚠️ Только ведущий может менять эту настройку!")
+            bot.edit_message_text(stats_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=types.InlineKeyboardMarkup().add(
+                                    types.InlineKeyboardButton("🎮 Лобби", callback_data="admin_lobbies"),
+                                    types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
+                                ))
+        
+        # Админ лобби
+        elif data == 'admin_lobbies':
+            if not is_admin(user_id):
+                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
                 return
             
-            # Переключаем настройку
-            lobby['auto_close'] = not lobby['auto_close']
-            bot.edit_message_reply_markup(call.message.chat.id, 
-                                         call.message.message_id,
-                                         reply_markup=create_lobby_menu(lobby_code))
-            bot.answer_callback_query(call.id, 
-                                     f"✅ Авто-закрытие {'включено' if lobby['auto_close'] else 'выключено'}!")
+            if not lobbies:
+                lobbies_text = "🔴 Активных лобби нет"
+            else:
+                lobbies_text = "<b>🎮 Активные лобби:</b>\n\n"
+                for code, lobby in lobbies.items():
+                    created_time = datetime.fromtimestamp(lobby['created_time']).strftime('%H:%M')
+                    players_count = len(lobby['players'])
+                    status = "🟢 Игра" if lobby['game_started'] else "🟡 Ожидание"
+                    
+                    lobbies_text += f"<code>{code}</code> - {players_count}/7 игроков\n"
+                    lobbies_text += f"Ведущий: {lobby['players'][0]['name']}\n"
+                    lobbies_text += f"Создано: {created_time} | Статус: {status}\n"
+                    lobbies_text += f"Раунд: {lobby['round_number']}\n"
+                    lobbies_text += "─" * 20 + "\n"
+            
+            bot.edit_message_text(lobbies_text, 
+                                call.message.chat.id, 
+                                call.message.message_id,
+                                reply_markup=types.InlineKeyboardMarkup().add(
+                                    types.InlineKeyboardButton("📊 Статистика", callback_data="admin_stats"),
+                                    types.InlineKeyboardButton("❌ Закрыть", callback_data="admin_close")
+                                ))
+        
+        # Закрыть админ панель
+        elif data == 'admin_close':
+            if not is_admin(user_id):
+                bot.answer_callback_query(call.id, "⚠️ У вас нет прав!")
+                return
+            
+            bot.delete_message(call.message.chat.id, call.message.message_id)
     
-    # Обработка других callback-действий (остальные функции аналогично, но я сократил для читаемости)
+    except Exception as e:
+        print(f"Ошибка в callback: {e}")
+        bot.answer_callback_query(call.id, "⚠️ Произошла ошибка!")
 
 # Игровая логика
 def start_round(lobby_code):
     lobby = lobbies[lobby_code]
     
-    # Сбрасываем голоса
     lobby['votes'] = {}
-    
-    # Определяем режим игры (каждый 5-й раунд - все шпионы)
     lobby['all_spies_mode'] = (lobby['round_number'] % 5 == 0)
     if lobby['all_spies_mode']:
         global_stats['all_spies_rounds'] += 1
     
-    # ВЫБИРАЕМ НОВОЕ СЛОВО ДЛЯ КАЖДОГО РАУНДА
     lobby['word'] = get_random_word(lobby['theme'], lobby['custom_word'])
     
-    # ВЫБИРАЕМ НОВОГО ШПИОНА для каждого раунда (если не режим "все шпионы")
     playing_players = [p for p in lobby['players'] if p['is_playing']]
     
     if lobby['all_spies_mode']:
-        lobby['spy_id'] = None  # Все шпионы
+        lobby['spy_id'] = None
         spy_text = "🕵️ <b>СЕКРЕТНЫЙ РАУНД!</b> ВСЕ игроки - шпионы!"
     else:
-        # Выбираем случайного шпиона ИСКЛЮЧАЯ предыдущего шпиона
         available_players = [p for p in playing_players if p['id'] != lobby.get('previous_spy_id')]
-        
-        # Если все игроки уже были шпионами, сбрасываем
         if not available_players:
             available_players = playing_players
         
         spy = random.choice(available_players)
         lobby['spy_id'] = spy['id']
-        lobby['previous_spy_id'] = spy['id']  # Запоминаем для следующего раунда
-        spy_text = f"Один из игроков - <b>ШПИОН</b>! 🕵️"
+        lobby['previous_spy_id'] = spy['id']
+        spy_text = "Один из игроков - <b>ШПИОН</b>! 🕵️"
     
-    # Отправляем информацию игрокам
     for player in playing_players:
         player_name = player['name']
         
         if lobby['all_spies_mode']:
-            # В режиме "все шпионы" никто не знает слово
             message = f"""
 <b>🎮 Раунд {lobby['round_number']} начался!</b>
 
@@ -1425,11 +1464,8 @@ def start_round(lobby_code):
 
 ⚠️ <b>Вы не знаете слово!</b>
 Все игроки в этом раунде - шпионы.
-
-Ваша задача - вычислить, что другие игроки ТОЖЕ не знают слово и вести себя соответственно.
             """
         elif player['id'] == lobby['spy_id']:
-            # Сообщение для шпиона
             message = f"""
 <b>🎮 Раунд {lobby['round_number']} начался!</b>
 
@@ -1441,12 +1477,9 @@ def start_round(lobby_code):
 
 Вы НЕ знаете слово.
 
-Слово, которое знают другие игроки: <code>?? ??? ??</code>
-
-Ваша задача - скрыть, что вы не знаете слово, и попытаться вычислить, что это за слово.
+Слово, которое знают другие: <code>?? ??? ??</code>
             """
         else:
-            # Сообщение для обычного игрока
             message = f"""
 <b>🎮 Раунд {lobby['round_number']} начался!</b>
 
@@ -1458,19 +1491,16 @@ def start_round(lobby_code):
 
 Слово: <code>{lobby['word']}</code>
 
-Ваша задача - описать слово так, чтобы другие игроки поняли, что вы знаете его, но не называть прямо.
-А также вычислить, кто НЕ знает слово (шпиона).
+Ваша задача - описать слово и вычислить шпиона.
             """
         
         try:
             bot.send_message(player['id'], message, reply_markup=get_game_keyboard())
-        except Exception as e:
-            print(f"Ошибка отправки сообщения игроку {player['id']}: {e}")
+        except:
+            pass
     
-    # Добавляем в статистику
     lobby_stats[lobby_code]['rounds_played'] += 1
     
-    # Записываем в историю голосований
     lobby['voting_history'].append({
         'round': lobby['round_number'],
         'word': lobby['word'],
@@ -1485,22 +1515,18 @@ def start_round(lobby_code):
 def check_voting_complete(lobby_code):
     lobby = lobbies[lobby_code]
     
-    # Проверяем, все ли игроки проголосовали
     playing_players = [p for p in lobby['players'] if p['is_playing']]
     voted_players = len(lobby['votes'])
     total_players = len(playing_players)
     
     if voted_players == total_players:
-        # Все проголосовали, завершаем раунд
         end_round(lobby_code)
     elif voted_players >= total_players - 1 and lobby['auto_close']:
-        # Все кроме одного проголосовали и включено авто-закрытие
         end_round(lobby_code)
 
 def end_round(lobby_code):
     lobby = lobbies[lobby_code]
     
-    # Подсчитываем голоса
     vote_counts = defaultdict(int)
     for voted_id in lobby['votes'].values():
         if voted_id == 'none':
@@ -1508,47 +1534,37 @@ def end_round(lobby_code):
         else:
             vote_counts[voted_id] += 1
     
-    # Определяем победителя
     playing_players = [p for p in lobby['players'] if p['is_playing']]
     
     if lobby['all_spies_mode']:
-        # В режиме "все шпионы"
         if vote_counts:
-            # Ищем, за кого больше всего голосов
             max_votes = max(vote_counts.values())
             most_voted = [k for k, v in vote_counts.items() if v == max_votes]
             
             if len(most_voted) == 1 and most_voted[0] != 'none':
-                # Кого-то выбрали - шпионы проиграли
                 winner = "players"
-                winner_text = "🎯 <b>ИГРОКИ ВЫИГРАЛИ!</b>\nОни смогли выбрать 'шпиона', хотя все были шпионами!"
+                winner_text = "🎯 <b>ИГРОКИ ВЫИГРАЛИ!</b>\nОни смогли выбрать 'шпиона'!"
                 global_stats['players_wins'] += 1
                 lobby_stats[lobby_code]['players_wins'] += 1
             else:
-                # Никого не выбрали или выбрали "никто" - шпионы выиграли
                 winner = "spies"
-                winner_text = "🕵️ <b>ШПИОНЫ ВЫИГРАЛИ!</b>\nНикто не был разоблачен, хотя все были шпионами!"
+                winner_text = "🕵️ <b>ШПИОНЫ ВЫИГРАЛИ!</b>\nНикто не был разоблачен!"
                 global_stats['spy_wins'] += 1
                 lobby_stats[lobby_code]['spy_wins'] += 1
         else:
-            # Никто не проголосовал
             winner = "spies"
             winner_text = "🕵️ <b>ШПИОНЫ ВЫИГРАЛИ!</b>\nНикто не проголосовал!"
             global_stats['spy_wins'] += 1
             lobby_stats[lobby_code]['spy_wins'] += 1
     else:
-        # Обычный режим
         if lobby['spy_id'] in vote_counts and vote_counts[lobby['spy_id']] > 0:
-            # Шпиона нашли
             winner = "players"
             winner_text = "🎯 <b>ИГРОКИ ВЫИГРАЛИ!</b>\nОни нашли шпиона!"
             global_stats['players_wins'] += 1
             lobby_stats[lobby_code]['players_wins'] += 1
         else:
-            # Шпиона не нашли
             winner = "spy"
             
-            # Находим имя шпиона
             spy_name = "Неизвестный"
             spy = next((p for p in playing_players if p['id'] == lobby['spy_id']), None)
             if spy:
@@ -1558,7 +1574,6 @@ def end_round(lobby_code):
             global_stats['spy_wins'] += 1
             lobby_stats[lobby_code]['spy_wins'] += 1
     
-    # Формируем результаты голосования
     results_text = f"""
 <b>🏁 Раунд {lobby['round_number']} завершен!</b>
 
@@ -1568,7 +1583,6 @@ def end_round(lobby_code):
 <b>Результаты голосования:</b>
 """
     
-    # Добавляем голоса
     for player in playing_players:
         if player['id'] in lobby['votes']:
             voted_id = lobby['votes'][player['id']]
@@ -1584,31 +1598,25 @@ def end_round(lobby_code):
     
     results_text += f"\n{winner_text}"
     
-    # Добавляем информацию о шпионе (если не режим "все шпионы")
     if not lobby['all_spies_mode'] and lobby['spy_id']:
         spy = next((p for p in playing_players if p['id'] == lobby['spy_id']), None)
         if spy:
             results_text += f"\n\n🕵️ Шпион был: <b>{spy['name']}</b>"
     
-    # Рассылаем результаты
     broadcast_to_lobby(lobby_code, results_text, keyboard=get_game_keyboard())
     
-    # Обновляем историю голосований
     if lobby['voting_history']:
         lobby['voting_history'][-1]['votes'] = dict(lobby['votes'])
         lobby['voting_history'][-1]['result'] = winner
     
-    # Подготавливаем следующий раунд
     lobby['round_number'] += 1
     lobby['votes'] = {}
     
-    # Автоматически начинаем следующий раунд через 5 секунд
     time.sleep(5)
     if lobby['game_started']:
         start_round(lobby_code)
     
-    # Проверяем, не нужно ли завершить игру
-    if lobby['round_number'] > 20:  # Максимум 20 раундов
+    if lobby['round_number'] > 20:
         lobby['game_started'] = False
         final_text = """
 <b>🎮 Игра завершена!</b>
@@ -1628,10 +1636,8 @@ if __name__ == '__main__':
     print(f"👑 Администратор: {ADMIN_ID}")
     print("=" * 50)
     
-    # Загружаем сохраненную статистику
     load_global_stats()
     
-    # Запускаем бота
     print("🔄 Бот запущен и готов к работе!")
     print("📊 Загруженная статистика:")
     print(f"   Всего игр: {global_stats['total_games']}")
