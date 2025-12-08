@@ -55,7 +55,6 @@ except ValueError:
 
 def check_subscription(user_id):
     """Проверяет, подписан ли пользователь на канал"""
-    return True
     
     try:
         member = bot.get_chat_member(CHANNEL_ID, user_id)
