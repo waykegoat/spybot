@@ -3,6 +3,7 @@ from collections import defaultdict
 from database import *
 from utils import *
 from keyboards import *
+from config import MIN_PLAYERS
 
 def broadcast_to_lobby(lobby_code, message, keyboard=None, exclude_user=None):
     lobby = lobbies.get(lobby_code)

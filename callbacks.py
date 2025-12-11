@@ -2,7 +2,7 @@ from telebot import types
 from datetime import datetime
 from collections import defaultdict
 
-from config import CHANNEL_ID
+from config import CHANNEL_ID, MIN_PLAYERS
 from database import *
 from utils import *
 from keyboards import *
@@ -280,8 +280,9 @@ def handle_callback(call):
                     return
                 
                 playing_players = [p for p in lobby['players'] if p['is_playing']]
-                if len(playing_players) < 3:
-                    bot.answer_callback_query(call.id, "⚠️ Нужно минимум 3 игрока!")
+                # ВАЖНО: Изменено с 3 на MIN_PLAYERS
+                if len(playing_players) < MIN_PLAYERS:
+                    bot.answer_callback_query(call.id, f"⚠️ Нужно минимум {MIN_PLAYERS} игрока!")
                     return
                 
                 lobby['game_started'] = True
@@ -514,9 +515,9 @@ def handle_callback(call):
                 bot.delete_message(call.message.chat.id, call.message.message_id)
                 
                 playing_players = [p for p in lobby['players'] if p['is_playing']]
-                if len(playing_players) < 3:
+                if len(playing_players) < MIN_PLAYERS:
                     lobby['game_started'] = False
-                    broadcast_to_lobby(lobby_code, "⚠️ Игра завершена, осталось меньше 3 игроков!")
+                    broadcast_to_lobby(lobby_code, f"⚠️ Игра завершена, осталось меньше {MIN_PLAYERS} игроков!")
         
         elif data.startswith('lobby_chat_'):
             if lobby_code in lobbies:
