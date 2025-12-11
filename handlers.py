@@ -2,11 +2,13 @@ from telebot import types
 from datetime import datetime
 from collections import defaultdict
 
-from config import CHANNEL_ID, CHANNEL_URL, CHANNEL_USERNAME
+from config import CHANNEL_ID, CHANNEL_URL, CHANNEL_USERNAME, MIN_PLAYERS
 from database import *
 from utils import *
 from keyboards import *
 from game_logic import start_round
+
+bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 def require_subscription(func):
     def wrapper(message, *args, **kwargs):
@@ -122,6 +124,8 @@ def handle_new(message):
 Отправьте этот код друзьям:
 <code>/join {lobby_code}</code>
 
+📋 <b>Для начала игры нужно минимум {MIN_PLAYERS} игрока!</b>
+
 Игроки в лобби (1/7):
 👑 {user_name} (Ведущий)
 
@@ -186,8 +190,13 @@ def handle_join(message):
     
     players_list = "\n".join([f"{'👑' if p['is_host'] else '👤'} {p['name']}" for p in lobby['players']])
     
+    playing_count = len([p for p in lobby['players'] if p['is_playing']])
+    status_text = "✅ Можно начинать!" if playing_count >= MIN_PLAYERS else f"⏳ Нужно еще {MIN_PLAYERS - playing_count} игрока"
+    
     welcome_text = f"""
 ✅ Вы присоединились к лобби {lobby_code}!
+
+<b>Статус:</b> {status_text}
 
 Игроки в лобби ({len(lobby['players'])}/7):
 {players_list}
@@ -200,7 +209,13 @@ def handle_join(message):
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_lobby_keyboard())
     bot.send_message(message.chat.id, "🎮 Меню лобби:", reply_markup=create_lobby_menu(lobby_code))
     
-    broadcast_to_lobby(lobby_code, f"👤 {user_name} присоединился к лобби!\nТеперь игроков: {len(lobby['players'])}/7", exclude_user=user_id)
+    from game_logic import broadcast_to_lobby
+    playing_count = len([p for p in lobby['players'] if p['is_playing']])
+    broadcast_to_lobby(lobby_code, 
+        f"👤 {user_name} присоединился к лобби!\n"
+        f"Теперь игроков: {len(lobby['players'])}/7\n"
+        f"<b>Статус:</b> {'✅ Можно начинать игру!' if playing_count >= MIN_PLAYERS else f'⏳ Нужно еще {MIN_PLAYERS - playing_count} игрока'}",
+        exclude_user=user_id)
     
     save_global_stats()
 
@@ -251,11 +266,12 @@ def handle_leave(message):
         bot.send_message(message.chat.id, f"✅ Вы покинули лобби {lobby_code}.")
         bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
         
+        from game_logic import broadcast_to_lobby
         broadcast_to_lobby(lobby_code, f"👤 {user_name} покинул лобби.\nОсталось игроков: {len(lobby['players'])}/7", exclude_user=user_id)
         
-        if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < 2:
+        if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < MIN_PLAYERS:
             lobby['game_started'] = False
-            broadcast_to_lobby(lobby_code, "⚠️ Игра завершена, потому что осталось меньше 3 игроков.")
+            broadcast_to_lobby(lobby_code, f"⚠️ Игра завершена, потому что осталось меньше {MIN_PLAYERS} игроков!")
     
     if lobby_code in lobbies and not lobbies[lobby_code]['players']:
         del lobbies[lobby_code]
@@ -329,6 +345,7 @@ def handle_chat(message):
     add_chat_message(lobby_code, user_name, chat_message)
     bot.send_message(message.chat.id, "✅ Сообщение отправлено в чат лобби!")
     
+    from game_logic import broadcast_to_lobby
     broadcast_to_lobby(lobby_code, f"💬 {user_name}: {chat_message}", exclude_user=user_id)
 
 @bot.message_handler(commands=['vote'])

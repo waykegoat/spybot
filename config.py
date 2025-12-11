@@ -2,6 +2,7 @@ import os
 
 API_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+MIN_PLAYERS = 2  
 
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@dimbub')
 CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/dimbub')
