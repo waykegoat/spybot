@@ -208,8 +208,9 @@ def end_round(lobby_code):
     lobby['votes'] = {}
     
     time.sleep(5)
-    if lobby['game_started']:
-        start_round(lobby_code)
+    if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < MIN_PLAYERS:
+        lobby['game_started'] = False
+    broadcast_to_lobby(lobby_code, f"⚠️ Игра завершена, потому что осталось меньше {MIN_PLAYERS} игроков!")
     
     if lobby['round_number'] > 20:
         lobby['game_started'] = False
