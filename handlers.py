@@ -65,6 +65,8 @@ def handle_start(message):
 /rules - правила игры
 /vote - голосовать за шпиона
 
+Также вы можете просто написать код лобби (например: ABC123) чтобы присоединиться!
+
 Используйте кнопки ниже для навигации!
     """
     
@@ -125,6 +127,7 @@ def handle_new(message):
 
 Отправьте этот код друзьям:
 <code>/join {lobby_code}</code>
+или просто отправьте код: <code>{lobby_code}</code>
 
 📋 <b>Для начала игры нужно минимум {MIN_PLAYERS} игрока!</b>
 
@@ -152,11 +155,27 @@ def handle_join(message):
     
     parts = message.text.split()
     if len(parts) < 2:
-        bot.send_message(message.chat.id, "⚠️ Укажите код лобби!\nПример: <code>/join ABC123</code>")
+        bot.send_message(message.chat.id, "⚠️ Укажите код лобби!\nПример: <code>/join ABC123</code>\nИли просто отправьте код: <code>ABC123</code>")
         return
     
     lobby_code = parts[1].upper().strip()
+    process_join_user(user_id, user_name, lobby_code, message)
+
+@bot.message_handler(func=lambda message: len(message.text) == 6 and message.text[:3].isalpha() and message.text[3:].isdigit())
+@require_subscription
+def handle_lobby_code(message):
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
     
+    if user_id in user_to_lobby:
+        lobby_code = user_to_lobby[user_id]
+        bot.send_message(message.chat.id, f"⚠️ Вы уже находитесь в лобби {lobby_code}.")
+        return
+    
+    lobby_code = message.text.upper().strip()
+    process_join_user(user_id, user_name, lobby_code, message)
+
+def process_join_user(user_id, user_name, lobby_code, message):
     if lobby_code not in lobbies:
         bot.send_message(message.chat.id, f"⚠️ Лобби с кодом <code>{lobby_code}</code> не найдено!")
         return
@@ -378,7 +397,7 @@ def handle_text(message):
         handle_new(message)
     
     elif text == "🔗 Войти в лобби":
-        bot.send_message(message.chat.id, "Введите код лобби:\nПример: <code>ABC123</code>")
+        bot.send_message(message.chat.id, "Введите код лобби:\nПример: <code>ABC123</code>\n(можно просто отправить код без /join)")
         bot.register_next_step_handler(message, process_join_code)
     
     elif text == "📖 Правила":
@@ -547,15 +566,6 @@ def process_join_code(message):
         return
     
     if lobby_code in lobbies:
-        handle_join(types.Message(
-            message_id=message.message_id,
-            from_user=message.from_user,
-            date=message.date,
-            chat=message.chat,
-            content_type='text',
-            options={},
-            json_string='',
-            text=f"/join {lobby_code}"
-        ))
+        process_join_user(user_id, message.from_user.first_name, lobby_code, message)
     else:
         bot.send_message(message.chat.id, f"⚠️ Лобби <code>{lobby_code}</code> не найдено!")
