@@ -6,10 +6,7 @@ from config import CHANNEL_ID, MIN_PLAYERS
 from database import *
 from utils import *
 from keyboards import *
-from game_logic import start_round, end_round, check_voting_complete, broadcast_to_lobby
-
-# Импортируем объект бота из handlers.py
-from handlers import bot
+from bot_instance import bot  # Импортируем из нового файла
 
 def extract_lobby_code(data):
     if data.startswith('send_'):
@@ -292,6 +289,7 @@ def handle_callback(call):
                 global_stats['total_games'] += 1
                 lobby_stats[lobby_code]['games_played'] += 1
                 
+                from game_logic import start_round
                 start_round(lobby_code)
                 
                 bot.answer_callback_query(call.id, "✅ Игра начата!")
@@ -323,6 +321,7 @@ def handle_callback(call):
                         
                         lobby['votes'][user_id] = voted_id
                         bot.answer_callback_query(call.id, f"✅ Вы проголосовали за {voted_player['name']}")
+                        from game_logic import check_voting_complete
                         check_voting_complete(lobby_code)
                 except ValueError:
                     bot.answer_callback_query(call.id, "⚠️ Ошибка голосования!")
@@ -343,6 +342,7 @@ def handle_callback(call):
                 
                 lobby['votes'][user_id] = 'none'
                 bot.answer_callback_query(call.id, "✅ Вы проголосовали за НИКОГО")
+                from game_logic import check_voting_complete
                 check_voting_complete(lobby_code)
         
         elif data.startswith('game_menu_'):
@@ -373,6 +373,7 @@ def handle_callback(call):
                 lobby['spy_id'] = None
                 lobby['word'] = None
                 
+                from game_logic import broadcast_to_lobby
                 broadcast_to_lobby(lobby_code, "⚠️ Игра завершена ведущим!", keyboard=get_lobby_keyboard())
                 
                 bot.answer_callback_query(call.id, "✅ Игра завершена!")
@@ -387,6 +388,7 @@ def handle_callback(call):
                     bot.answer_callback_query(call.id, "⚠️ Только ведущий может завершить раунд!")
                     return
                 
+                from game_logic import end_round
                 end_round(lobby_code)
                 bot.answer_callback_query(call.id, "✅ Раунд завершен!")
                 bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -400,6 +402,7 @@ def handle_callback(call):
                     bot.answer_callback_query(call.id, "⚠️ Только ведущий может начать новый раунд!")
                     return
                 
+                from game_logic import start_round
                 start_round(lobby_code)
                 bot.answer_callback_query(call.id, "✅ Новый раунд начат!")
                 bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -429,6 +432,7 @@ def handle_callback(call):
                     user_name = call.from_user.first_name
                     
                     add_chat_message(lobby_code, user_name, chat_message)
+                    from game_logic import broadcast_to_lobby
                     broadcast_to_lobby(lobby_code, f"💬 {user_name}: {chat_message}", exclude_user=user_id)
                     
                     bot.answer_callback_query(call.id, "✅ Сообщение отправлено!")
@@ -511,6 +515,7 @@ def handle_callback(call):
                     return
                 
                 player['is_playing'] = False
+                from game_logic import broadcast_to_lobby
                 broadcast_to_lobby(lobby_code, f"⚠️ {player['name']} сдался и выбывает из игры!")
                 
                 bot.answer_callback_query(call.id, "✅ Вы сдались!")

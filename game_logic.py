@@ -3,9 +3,7 @@ from collections import defaultdict
 from database import *
 from utils import *
 from keyboards import *
-
-# Импортируем бота из handlers.py
-from handlers import bot
+from bot_instance import bot  # Импортируем из нового файла
 
 def broadcast_to_lobby(lobby_code, message, keyboard=None, exclude_user=None):
     lobby = lobbies.get(lobby_code)

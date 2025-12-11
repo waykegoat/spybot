@@ -12,11 +12,13 @@ try:
     from database import load_global_stats, global_stats
     print("✅ database.py загружен")
     
-    from handlers import bot
-    print("✅ handlers.py загружен")
+    # Импортируем handlers и callbacks для регистрации обработчиков
+    import handlers
+    import callbacks
+    print("✅ handlers.py и callbacks.py загружены")
     
-    from callbacks import *
-    print("✅ callbacks.py загружен")
+    from bot_instance import bot
+    print("✅ bot_instance.py загружен")
     
     print("✅ Все модули загружены успешно")
     
