@@ -6,7 +6,7 @@ from config import CHANNEL_ID, MIN_PLAYERS
 from database import *
 from utils import *
 from keyboards import *
-from bot_instance import bot  # Импортируем из нового файла
+from bot_instance import bot  # Импортируем из главной папки
 
 def extract_lobby_code(data):
     if data.startswith('send_'):

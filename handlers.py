@@ -7,7 +7,7 @@ from config import CHANNEL_ID, CHANNEL_URL, CHANNEL_USERNAME, MIN_PLAYERS
 from database import *
 from utils import *
 from keyboards import *
-from bot_instance import bot  # Импортируем из нового файла
+from bot_instance import bot  # Импортируем из главной папки
 
 def require_subscription(func):
     def wrapper(message, *args, **kwargs):
