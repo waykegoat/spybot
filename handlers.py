@@ -253,7 +253,7 @@ def handle_leave(message):
         
         broadcast_to_lobby(lobby_code, f"👤 {user_name} покинул лобби.\nОсталось игроков: {len(lobby['players'])}/7", exclude_user=user_id)
         
-        if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < 3:
+        if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < 2:
             lobby['game_started'] = False
             broadcast_to_lobby(lobby_code, "⚠️ Игра завершена, потому что осталось меньше 3 игроков.")
     
