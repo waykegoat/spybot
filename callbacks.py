@@ -8,6 +8,9 @@ from utils import *
 from keyboards import *
 from game_logic import start_round, end_round, check_voting_complete, broadcast_to_lobby
 
+# Импортируем объект бота из handlers.py
+from handlers import bot
+
 def extract_lobby_code(data):
     if data.startswith('send_'):
         parts = data.split('_', 2)
@@ -280,7 +283,6 @@ def handle_callback(call):
                     return
                 
                 playing_players = [p for p in lobby['players'] if p['is_playing']]
-                # ВАЖНО: Изменено с 3 на MIN_PLAYERS
                 if len(playing_players) < MIN_PLAYERS:
                     bot.answer_callback_query(call.id, f"⚠️ Нужно минимум {MIN_PLAYERS} игрока!")
                     return

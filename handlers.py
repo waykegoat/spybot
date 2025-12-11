@@ -3,12 +3,13 @@ from telebot import types
 from datetime import datetime
 from collections import defaultdict
 
-from config import CHANNEL_ID, CHANNEL_URL, CHANNEL_USERNAME, MIN_PLAYERS
+from config import CHANNEL_ID, CHANNEL_URL, CHANNEL_USERNAME, MIN_PLAYERS, API_TOKEN
 from database import *
 from utils import *
 from keyboards import *
-from game_logic import start_round
+from game_logic import start_round, broadcast_to_lobby
 
+# Создаем объект бота
 bot = telebot.TeleBot(API_TOKEN, parse_mode='HTML')
 
 def require_subscription(func):
@@ -210,7 +211,6 @@ def handle_join(message):
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_lobby_keyboard())
     bot.send_message(message.chat.id, "🎮 Меню лобби:", reply_markup=create_lobby_menu(lobby_code))
     
-    from game_logic import broadcast_to_lobby
     playing_count = len([p for p in lobby['players'] if p['is_playing']])
     broadcast_to_lobby(lobby_code, 
         f"👤 {user_name} присоединился к лобби!\n"
@@ -267,7 +267,6 @@ def handle_leave(message):
         bot.send_message(message.chat.id, f"✅ Вы покинули лобби {lobby_code}.")
         bot.send_message(message.chat.id, "Главное меню:", reply_markup=get_main_keyboard())
         
-        from game_logic import broadcast_to_lobby
         broadcast_to_lobby(lobby_code, f"👤 {user_name} покинул лобби.\nОсталось игроков: {len(lobby['players'])}/7", exclude_user=user_id)
         
         if lobby['game_started'] and len([p for p in lobby['players'] if p['is_playing']]) < MIN_PLAYERS:
@@ -346,7 +345,6 @@ def handle_chat(message):
     add_chat_message(lobby_code, user_name, chat_message)
     bot.send_message(message.chat.id, "✅ Сообщение отправлено в чат лобби!")
     
-    from game_logic import broadcast_to_lobby
     broadcast_to_lobby(lobby_code, f"💬 {user_name}: {chat_message}", exclude_user=user_id)
 
 @bot.message_handler(commands=['vote'])
