@@ -35,7 +35,7 @@ def start_round(lobby_code):
     
     if lobby['all_spies_mode']:
         lobby['spy_id'] = None
-        spy_text = "🕵️ СЕКРЕТНЫЙ РАУНД! ВСЕ игроки - шпионы!"
+        spy_text = "Один из игроков - ШПИОН! 🕵️"
     else:
         available_players = [p for p in playing_players if p['id'] != lobby.get('previous_spy_id')]
         if not available_players:
@@ -58,7 +58,7 @@ def start_round(lobby_code):
 Тема: {get_theme_name(lobby['theme'])}
 
 ⚠️ Вы не знаете слово!
-Все игроки в этом раунде - шпионы.
+Ваша задача отгадать слово.
             """
         elif player['id'] == lobby['spy_id']:
             message = f"""
